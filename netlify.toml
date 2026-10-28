@@ -1,0 +1,13 @@
+[build]
+  # Deploys the Convex functions to production, then builds the site with
+  # VITE_CONVEX_URL pointing at that deployment. Requires the CONVEX_DEPLOY_KEY
+  # environment variable in Netlify (Convex dashboard → Settings → General →
+  # Production deploy key).
+  command = "npx convex deploy --cmd 'npm run build'"
+  publish = "dist"
+
+# Single-page app: let React Router handle every path (e.g. /entregas/123).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
