@@ -1,0 +1,46 @@
+.page {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px 16px;
+  background:
+    radial-gradient(circle at 20% 0%, rgb(111 224 172 / 0.25), transparent 45%),
+    linear-gradient(180deg, var(--green-900) 0 38%, var(--bg) 38%);
+}
+
+.card {
+  width: 100%;
+  max-width: 400px;
+  padding: 36px 28px 28px;
+  text-align: center;
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+}
+
+.logo img {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  margin: 4px 0 24px;
+  color: var(--muted);
+}
+
+.google {
+  width: 100%;
+}
+
+.footnote {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}

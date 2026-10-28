@@ -1,0 +1,78 @@
+.root {
+  display: grid;
+  gap: 10px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  max-height: 52dvh;
+  overflow-y: auto;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 600;
+  text-align: left;
+}
+
+.option:hover,
+.option:active {
+  background: var(--green-50);
+}
+
+.add {
+  color: var(--green-900);
+  font-weight: 500;
+}
+
+.add strong {
+  font-weight: 700;
+}
+
+.match {
+  margin-left: auto;
+  color: var(--green-700);
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  padding: 18px 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.selected {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--green-100);
+  border-radius: 12px;
+  background: var(--green-50);
+}
+
+.selectedName {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.selectedHint {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}

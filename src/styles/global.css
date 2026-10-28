@@ -1,0 +1,186 @@
+:root {
+  --green-900: #0e5a4a;
+  --green-800: #136b58;
+  --green-700: #1a7d67;
+  --green-100: #dcefe8;
+  --green-50: #edf6f2;
+  --mint: #6fe0ac;
+
+  --bg: #f1f3f2;
+  --surface: #ffffff;
+  --surface-muted: #f7f9f8;
+  --border: #e3e7e5;
+  --border-strong: #cfd6d3;
+  --text: #1c2421;
+  --muted: #6b7472;
+  --danger: #b91c1c;
+  --danger-bg: #fee2e2;
+  --warning: #92400e;
+  --warning-bg: #fef3c7;
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --shadow: 0 1px 2px rgb(16 40 34 / 0.04), 0 4px 16px rgb(16 40 34 / 0.06);
+  --shadow-lg: 0 8px 32px rgb(16 40 34 / 0.16);
+
+  --page-max: 1120px;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: var(--green-800);
+}
+
+:focus-visible {
+  outline: 2px solid var(--green-700);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Shared form + button primitives (used across CSS modules via `composes`-free global classes). */
+.input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+textarea.input {
+  height: auto;
+  min-height: 140px;
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--green-700);
+  box-shadow: 0 0 0 3px rgb(26 125 103 / 0.15);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--green-900);
+  color: #fff;
+}
+
+.btn-primary:not(:disabled):hover {
+  background: var(--green-800);
+}
+
+.btn-soft {
+  background: var(--green-50);
+  color: var(--green-900);
+  border-color: var(--green-100);
+}
+
+.btn-soft:not(:disabled):hover {
+  background: var(--green-100);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.btn-ghost:not(:disabled):hover {
+  background: var(--surface-muted);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-lg {
+  height: 52px;
+  font-size: 16px;
+  border-radius: 12px;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.error-text {
+  color: var(--danger);
+  font-size: 14px;
+}

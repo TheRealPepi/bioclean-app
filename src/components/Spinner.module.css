@@ -1,0 +1,30 @@
+.spinner {
+  display: inline-block;
+  border: 3px solid var(--green-100);
+  border-top-color: var(--green-900);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.light {
+  border-color: rgb(255 255 255 / 0.3);
+  border-top-color: #fff;
+}
+
+.fullScreen {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+}
+
+.centered {
+  display: grid;
+  place-items: center;
+  padding: 64px 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
