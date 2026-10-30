@@ -140,3 +140,54 @@
     transform: translate(-50%, -12px);
   }
 }
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 24px 0 4px;
+}
+
+.sectionHeader .sectionTitle {
+  margin: 0;
+}
+
+.waitingHint {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.itemFailed {
+  border-color: #fca5a5;
+}
+
+.itemError {
+  margin: 0;
+  font-size: 14px;
+  color: var(--danger);
+}
+
+.syncBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.syncUploading {
+  background: var(--green-50);
+  color: var(--green-900);
+}
+
+.syncFailed {
+  background: var(--danger-bg);
+  color: var(--danger);
+}

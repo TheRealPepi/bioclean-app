@@ -1,3 +1,5 @@
+// Bundled (not Google Fonts) so the app looks the same offline.
+import "@fontsource-variable/inter";
 // Global styles first so component CSS modules can override them.
 import "./styles/global.css";
 

@@ -28,7 +28,7 @@ async function loadPhoto(url: string | null): Promise<LoadedImage | null> {
 }
 
 export function pdfFileName(d: DeliveryDetails): string {
-  return `Entrega_${fileSafe(d.invoiceNumber)}_${fileSafe(d.clientName)}_${isoDate(d._creationTime)}.pdf`;
+  return `Entrega_${fileSafe(d.invoiceNumber)}_${fileSafe(d.clientName)}_${isoDate(d.deliveredAt)}.pdf`;
 }
 
 /** Builds the delivery receipt ("comprobante de entrega") and downloads it. */
@@ -58,7 +58,7 @@ export async function downloadDeliveryPdf(d: DeliveryDetails): Promise<void> {
   doc.text("Comprobante de entrega", margin, 22);
   doc.setFontSize(10);
   doc.text(`Factura ${d.invoiceNumber}`, pageW - margin, 14, { align: "right" });
-  doc.text(isoDate(d._creationTime), pageW - margin, 22, { align: "right" });
+  doc.text(isoDate(d.deliveredAt), pageW - margin, 22, { align: "right" });
 
   let y = 42;
 
@@ -86,8 +86,8 @@ export async function downloadDeliveryPdf(d: DeliveryDetails): Promise<void> {
 
   // Detail grid
   const fields: [string, string][] = [
-    ["Fecha", formatLongDate(d._creationTime)],
-    ["Hora", formatTime(d._creationTime)],
+    ["Fecha", formatLongDate(d.deliveredAt)],
+    ["Hora", formatTime(d.deliveredAt)],
     ["Factura", d.invoiceNumber],
     ["Chofer", d.driverName],
   ];

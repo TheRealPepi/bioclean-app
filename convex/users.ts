@@ -48,7 +48,7 @@ export const listDrivers = query({
         email: user.email ?? null,
         image: user.image ?? null,
         deliveryCount: deliveries.length,
-        lastDeliveryAt: deliveries[0]?._creationTime ?? null,
+        lastDeliveryAt: deliveries[0] ? (deliveries[0].deliveredAt ?? deliveries[0]._creationTime) : null,
       });
     }
     drivers.sort((a, b) => a.name.localeCompare(b.name, "es"));

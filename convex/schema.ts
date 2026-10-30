@@ -38,8 +38,17 @@ export default defineSchema({
     notes: v.string(),
     driverId: v.id("users"),
     driverName: v.string(),
+    // When the driver recorded it on the phone. Can be earlier than
+    // _creationTime if it was saved without signal and uploaded later.
+    // Rows from before offline mode get it from `backfillDeliveredAt`.
+    deliveredAt: v.optional(v.number()),
+    // Random id generated on the phone so a retried upload never creates the
+    // same delivery twice.
+    clientRequestId: v.optional(v.string()),
   })
-    .index("by_driver", ["driverId"])
+    .index("by_driver", ["driverId", "deliveredAt"])
+    .index("by_delivered", ["deliveredAt"])
     .index("by_client", ["clientId"])
-    .index("by_invoice", ["invoiceNumber"]),
+    .index("by_invoice", ["invoiceNumber"])
+    .index("by_client_request", ["clientRequestId"]),
 });

@@ -78,6 +78,29 @@ Abre en el teléfono la dirección `https://<ip-de-tu-computadora>:5173` que mue
 3. En producción: `SITE_URL` = la URL pública de la app, y agrega esa URL y el redirect URI de producción en Google Cloud Console.
 4. Configura el hosting para que todas las rutas sirvan `index.html` (SPA), por ejemplo en Vercel con un rewrite de `/(.*)` a `/`.
 
+## Modo sin señal
+
+La app se puede instalar en el teléfono y funciona sin internet:
+
+- **Instalar** (una vez por teléfono):
+  - **Android (Chrome):** en la pantalla de inicio de la app aparece el botón **Instalar**, o menú ⋮ → *Instalar app*.
+  - **iPhone (Safari):** botón **Compartir** → **Agregar a pantalla de inicio**. Luego abrir la app desde el ícono e **iniciar sesión ahí** (en iPhone la app instalada no comparte la sesión con Safari). Es importante instalarla: Safari puede borrar los datos guardados de un sitio tras 7 días sin usarlo, pero no los de las apps instaladas.
+- **Sin señal:** el chofer abre la app y registra entregas normalmente (fotos y GPS funcionan sin internet). Al tocar *Guardar entrega* se guarda en el teléfono y aparece en **Por subir**.
+- **Al volver la señal:** las entregas se suben solas mientras la app esté abierta (en iPhone no se suben con la app cerrada). La fecha y hora que quedan registradas son las del momento en que se guardó, no las de la subida. Si una entrega se sube dos veces por un corte de señal, el servidor la reconoce y no la duplica.
+- Si el servidor rechaza una entrega, se queda en el teléfono marcada como *No se pudo subir* con el motivo y el botón **Reintentar**. Nunca se borra sola.
+- Para salir de la cuenta hace falta señal, y la app avisa si quedan entregas sin subir.
+
+**Al publicar esta versión por primera vez**, corre una vez (asigna la fecha de entrega a las entregas anteriores para que sigan apareciendo en los filtros por fecha):
+
+```sh
+npx convex run deliveries:backfillDeliveredAt          # desarrollo
+npx convex run deliveries:backfillDeliveredAt --prod   # producción
+```
+
+Repítelo hasta que responda `done: true`.
+
+**Íconos:** se generan desde `public/app-icon.svg` con `npx pwa-assets-generator`.
+
 ## Notas
 
 - **Zona horaria:** las fechas se muestran y filtran en hora de Cozumel (UTC-5 todo el año).
@@ -96,4 +119,6 @@ src/
   pages/DeliveryPage.tsx   Detalle de entrega (admin y chofer)
   lib/pdf.ts       Comprobante PDF
   lib/draft.ts     Borrador del asistente guardado en el teléfono
+  lib/outbox.ts    Entregas guardadas en el teléfono esperando subirse
+  lib/OutboxProvider.tsx  Sube esas entregas cuando hay señal
 ```

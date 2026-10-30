@@ -1,8 +1,6 @@
-import { useMutation, useQuery } from "convex/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
-import type { Id } from "../../../convex/_generated/dataModel";
 import { cleanInvoice } from "../../../convex/lib/text";
 import { ClientCombobox } from "../../components/ClientCombobox";
 import { CloseIcon } from "../../components/Icons";
@@ -18,8 +16,10 @@ import {
   type Draft,
   type PhotoKey,
 } from "../../lib/draft";
-import { errorMessage } from "../../lib/errors";
 import type { Me } from "../../lib/me";
+import { useOutbox } from "../../lib/OutboxProvider";
+import { useCachedQuery } from "../../lib/useCachedQuery";
+import { useOnline } from "../../lib/useOnline";
 import { InvoiceStep, LocationStep, ReviewStep } from "./steps";
 import styles from "./NewDeliveryWizard.module.css";
 
@@ -83,15 +83,13 @@ function isStepValid(key: StepKey, d: Draft): boolean {
 
 export function NewDeliveryWizard({ me }: { me: Me }) {
   const navigate = useNavigate();
-  const clients = useQuery(api.clients.list);
-  const generateUploadUrl = useMutation(api.deliveries.generateUploadUrl);
-  const createDelivery = useMutation(api.deliveries.create);
+  const online = useOnline();
+  const outbox = useOutbox()!;
+  const clients = useCachedQuery(api.clients.list, {}, "clients");
 
   const [draft, setDraft] = useState<Draft | null>(null);
-  const [submitting, setSubmitting] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Photos already uploaded in this session, so a retry doesn't upload them again.
-  const uploaded = useRef(new Map<Blob, Id<"_storage">>());
 
   useEffect(() => {
     void loadDraft(me._id).then((saved) => setDraft(saved ?? emptyDraft()));
@@ -117,48 +115,19 @@ export function NewDeliveryWizard({ me }: { me: Me }) {
     window.scrollTo(0, 0);
   };
 
-  async function upload(photo: Blob): Promise<Id<"_storage">> {
-    const cached = uploaded.current.get(photo);
-    if (cached) return cached;
-    const url = await generateUploadUrl();
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": photo.type || "image/jpeg" },
-      body: photo,
-    });
-    if (!response.ok) throw new Error("Upload failed");
-    const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
-    uploaded.current.set(photo, storageId);
-    return storageId;
-  }
-
+  // Saved on the phone first, with or without signal; OutboxProvider uploads it.
   async function submit(d: Draft) {
     setError(null);
+    setSubmitting(true);
     try {
-      const keys: PhotoKey[] = ["invoice", "receiver", "goods"];
-      const ids: Id<"_storage">[] = [];
-      for (const [i, key] of keys.entries()) {
-        setSubmitting(`Subiendo fotos (${i + 1} de 3)…`);
-        ids.push(await upload(d.photos[key]!));
-      }
-      setSubmitting("Guardando entrega…");
-      await createDelivery({
-        clientId: d.clientId,
-        clientName: d.clientName,
-        invoiceNumber: d.invoiceNumber,
-        invoicePhotoId: ids[0],
-        receiverPhotoId: ids[1],
-        goodsPhotoId: ids[2],
-        location: d.location!,
-        status: d.status!,
-        notes: d.notes,
-      });
-      await clearDraft(me._id);
-      navigate("/", { replace: true, state: { saved: d.clientName } });
-    } catch (e) {
-      setError(errorMessage(e));
-      setSubmitting(null);
+      await outbox.enqueue(d);
+    } catch {
+      setError("No se pudo guardar en el teléfono. Revisa que tenga espacio libre e inténtalo de nuevo.");
+      setSubmitting(false);
+      return;
     }
+    await clearDraft(me._id);
+    navigate("/", { replace: true, state: { saved: d.clientName, queued: !online } });
   }
 
   const photoKey = PHOTO_STEPS[step.key];
@@ -254,7 +223,7 @@ export function NewDeliveryWizard({ me }: { me: Me }) {
             type="button"
             className="btn btn-ghost btn-lg"
             onClick={() => goTo(stepIndex - 1)}
-            disabled={submitting !== null}
+            disabled={submitting}
           >
             Atrás
           </button>
@@ -263,12 +232,12 @@ export function NewDeliveryWizard({ me }: { me: Me }) {
           <button
             type="button"
             className={`btn btn-primary btn-lg ${styles.next}`}
-            disabled={!valid || submitting !== null}
+            disabled={!valid || submitting}
             onClick={() => void submit(draft)}
           >
             {submitting ? (
               <>
-                <Spinner size={20} light /> {submitting}
+                <Spinner size={20} light /> Guardando entrega…
               </>
             ) : (
               "Guardar entrega"

@@ -86,8 +86,8 @@ export function DeliveriesPage() {
       lo === hi ? `entregas_${lo}.csv` : `entregas_${lo}_a_${hi}.csv`,
       ["Fecha", "Hora", "Cliente", "Factura", "Chofer", "Estatus", "Anotaciones", "Ubicación"],
       rows.map((d) => [
-        isoDate(d._creationTime),
-        formatTime(d._creationTime),
+        isoDate(d.deliveredAt),
+        formatTime(d.deliveredAt),
         d.clientName,
         d.invoiceNumber,
         d.driverName,
@@ -215,7 +215,7 @@ export function DeliveriesPage() {
                   onClick={() => openDelivery(d._id)}
                   onKeyDown={(e) => e.key === "Enter" && openDelivery(d._id)}
                 >
-                  <td className={styles.date}>{formatShort(d._creationTime)}</td>
+                  <td className={styles.date}>{formatShort(d.deliveredAt)}</td>
                   <td className={styles.client}>{d.clientName}</td>
                   <td className={styles.invoice}>{d.invoiceNumber}</td>
                   <td className={styles.driver}>{d.driverName}</td>

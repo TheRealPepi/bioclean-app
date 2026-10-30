@@ -8,7 +8,9 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { formatShort } from "../../lib/dates";
 import type { Draft, PhotoKey } from "../../lib/draft";
 import { osmEmbedUrl } from "../../lib/maps";
+import { useOutbox } from "../../lib/OutboxProvider";
 import { useObjectUrl } from "../../lib/useObjectUrl";
+import { useOnline } from "../../lib/useOnline";
 import type { StepKey } from "./NewDeliveryWizard";
 import styles from "./steps.module.css";
 
@@ -22,7 +24,11 @@ export function InvoiceStep({
   onSubmit: () => void;
 }) {
   const invoice = cleanInvoice(value);
-  const existing = useQuery(api.deliveries.findByInvoice, invoice ? { invoiceNumber: invoice } : "skip");
+  const onServer = useQuery(api.deliveries.findByInvoice, invoice ? { invoiceNumber: invoice } : "skip");
+  // Also deliveries saved on this phone and not uploaded yet (no signal).
+  const waiting = useOutbox()?.items.find((i) => invoice && cleanInvoice(i.invoiceNumber) === invoice);
+  const existing =
+    onServer ?? (waiting && { clientName: waiting.clientName, createdAt: waiting.deliveredAt });
 
   return (
     <form
@@ -75,6 +81,7 @@ export function LocationStep({
   value: Location | undefined;
   onChange: (location: Location) => void;
 }) {
+  const online = useOnline();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,7 +105,8 @@ export function LocationStep({
         setError(geolocationError(err));
         setBusy(false);
       },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+      // Without mobile data the first GPS fix can take a while.
+      { enableHighAccuracy: true, timeout: 45000, maximumAge: 0 },
     );
   }
 
@@ -106,7 +114,14 @@ export function LocationStep({
     <div className={styles.stack}>
       {value ? (
         <>
-          <iframe className={styles.map} title="Ubicación guardada" src={osmEmbedUrl(value)} />
+          {online ? (
+            <iframe className={styles.map} title="Ubicación guardada" src={osmEmbedUrl(value)} />
+          ) : (
+            <div className={`${styles.map} ${styles.mapOffline}`}>
+              <PinIcon size={28} />
+              <span>El mapa aparecerá cuando haya señal. La ubicación ya quedó guardada.</span>
+            </div>
+          )}
           <div className={styles.locationInfo}>
             <span>
               {value.lat.toFixed(5)}, {value.lng.toFixed(5)}

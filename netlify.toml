@@ -11,3 +11,15 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# The service worker and manifest must be re-checked on every visit so phones
+# pick up new versions of the app quickly.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"

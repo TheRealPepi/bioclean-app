@@ -82,3 +82,16 @@ export const ExternalIcon = (p: IconProps) => (
     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" />
   </Icon>
 );
+
+export const CloudOffIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M2 2l20 20" />
+    <path d="M5.8 5.8A7 7 0 0 0 7 19h10.2M21 15.6A5 5 0 0 0 17 8h-1.3A7 7 0 0 0 9.9 5.6" />
+  </Icon>
+);
+
+export const UploadIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />
+  </Icon>
+);

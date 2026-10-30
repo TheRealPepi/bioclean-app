@@ -56,8 +56,8 @@ export function DeliveryPage() {
           <div className={styles.eyebrow}>Factura {delivery.invoiceNumber}</div>
           <h1 className={styles.client}>{delivery.clientName}</h1>
           <div className={styles.meta}>
-            <span>{formatLongDate(delivery._creationTime)}</span>
-            <span>{formatTime(delivery._creationTime)}</span>
+            <span>{formatLongDate(delivery.deliveredAt)}</span>
+            <span>{formatTime(delivery.deliveredAt)}</span>
             <span>Chofer: {delivery.driverName}</span>
           </div>
         </div>

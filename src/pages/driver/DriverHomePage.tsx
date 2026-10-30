@@ -1,20 +1,33 @@
-import { useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
-import { CheckIcon, PlusIcon } from "../../components/Icons";
-import { CenteredSpinner } from "../../components/Spinner";
+import { cleanInvoice } from "../../../convex/lib/text";
+import { InstallBanner } from "../../components/InstallBanner";
+import { CheckIcon, PlusIcon, UploadIcon } from "../../components/Icons";
+import { CenteredSpinner, Spinner } from "../../components/Spinner";
 import { StatusBadge } from "../../components/StatusBadge";
-import { formatLongDate, formatTime, isoDate, startOfDay } from "../../lib/dates";
+import { formatLongDate, formatShort, formatTime, isoDate, startOfDay } from "../../lib/dates";
 import { clearDraft, draftHasContent, loadDraft, type Draft } from "../../lib/draft";
 import type { Me } from "../../lib/me";
+import type { OutboxItem } from "../../lib/outbox";
+import { useOutbox } from "../../lib/OutboxProvider";
+import { useCachedQuery } from "../../lib/useCachedQuery";
+import { useOnline } from "../../lib/useOnline";
 import styles from "./DriverHomePage.module.css";
+
+type SavedToast = { saved: string; queued?: boolean };
 
 export function DriverHomePage({ me }: { me: Me }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const online = useOnline();
+  const outbox = useOutbox()!;
   const today = isoDate();
-  const deliveries = useQuery(api.deliveries.listMine, { since: startOfDay(today) });
+  const deliveries = useCachedQuery(
+    api.deliveries.listMine,
+    { since: startOfDay(today) },
+    `listMine:${me._id}:${today}`,
+  );
 
   const [draft, setDraft] = useState<Draft | null>(null);
   useEffect(() => {
@@ -22,15 +35,18 @@ export function DriverHomePage({ me }: { me: Me }) {
   }, [me._id]);
 
   // Confirmation toast after saving a delivery.
-  const [saved, setSaved] = useState<string | null>(
-    (location.state as { saved?: string } | null)?.saved ?? null,
+  const [saved, setSaved] = useState<SavedToast | null>(
+    (location.state as SavedToast | null)?.saved ? (location.state as SavedToast) : null,
   );
   useEffect(() => {
     if (!saved) return;
     navigate(".", { replace: true, state: null });
-    const timer = setTimeout(() => setSaved(null), 4000);
+    const timer = setTimeout(() => setSaved(null), saved.queued ? 6000 : 4000);
     return () => clearTimeout(timer);
   }, [saved, navigate]);
+
+  const waiting = outbox.items;
+  const hasFailed = waiting.some((i) => i.error);
 
   return (
     <div className={styles.page}>
@@ -38,6 +54,8 @@ export function DriverHomePage({ me }: { me: Me }) {
         <h1>Hola, {me.name.split(" ")[0]}</h1>
         <p>{formatLongDate(Date.now())}</p>
       </div>
+
+      <InstallBanner />
 
       {draft && (
         <div className={styles.draft}>
@@ -60,18 +78,58 @@ export function DriverHomePage({ me }: { me: Me }) {
         </div>
       )}
 
+      {waiting.length > 0 && (
+        <>
+          <div className={styles.sectionHeader}>
+            <h2 className={styles.sectionTitle}>Por subir · {waiting.length}</h2>
+            {online && (hasFailed || !outbox.uploadingId) && (
+              <button type="button" className="btn btn-ghost" onClick={outbox.syncNow}>
+                <UploadIcon size={18} /> {hasFailed ? "Reintentar" : "Subir ahora"}
+              </button>
+            )}
+          </div>
+          <p className={styles.waitingHint}>
+            {online
+              ? "Guardadas en el teléfono. Se están subiendo; deja la app abierta."
+              : "Guardadas en el teléfono. Se subirán solas cuando haya señal y abras la app."}
+          </p>
+          <ul className={styles.list}>
+            {waiting.map((item) => (
+              <WaitingItem
+                key={item.id}
+                item={item}
+                uploading={outbox.uploadingId === item.id}
+                today={today}
+              />
+            ))}
+          </ul>
+        </>
+      )}
+
       <h2 className={styles.sectionTitle}>
         Entregas de hoy{deliveries ? ` · ${deliveries.length}` : ""}
       </h2>
 
       {deliveries === undefined ? (
-        <CenteredSpinner />
+        online ? (
+          <CenteredSpinner />
+        ) : (
+          <div className={`card ${styles.empty}`}>
+            <p>Sin señal. La lista aparecerá cuando vuelva la conexión.</p>
+          </div>
+        )
       ) : deliveries.length === 0 ? (
         <div className={`card ${styles.empty}`}>
-          <p>Aún no registras entregas hoy.</p>
-          <p>
-            Toca <strong>Nueva entrega</strong> para empezar.
-          </p>
+          {waiting.length > 0 ? (
+            <p>Aún no se sube ninguna entrega de hoy.</p>
+          ) : (
+            <>
+              <p>Aún no registras entregas hoy.</p>
+              <p>
+                Toca <strong>Nueva entrega</strong> para empezar.
+              </p>
+            </>
+          )}
         </div>
       ) : (
         <ul className={styles.list}>
@@ -81,7 +139,7 @@ export function DriverHomePage({ me }: { me: Me }) {
                 <strong>{d.clientName}</strong>
                 <div className={styles.itemMeta}>
                   <span>
-                    {d.invoiceNumber} · {formatTime(d._creationTime)}
+                    {d.invoiceNumber} · {formatTime(d.deliveredAt)}
                   </span>
                   <StatusBadge status={d.status} />
                 </div>
@@ -99,9 +157,44 @@ export function DriverHomePage({ me }: { me: Me }) {
       {saved && (
         <div className={styles.toast} role="status">
           <CheckIcon size={20} />
-          Entrega guardada · {saved}
+          {saved.queued
+            ? "Guardada en el teléfono · se subirá cuando haya señal"
+            : `Entrega guardada · ${saved.saved}`}
         </div>
       )}
     </div>
+  );
+}
+
+function WaitingItem({
+  item,
+  uploading,
+  today,
+}: {
+  item: OutboxItem;
+  uploading: boolean;
+  today: string;
+}) {
+  const when =
+    isoDate(item.deliveredAt) === today ? formatTime(item.deliveredAt) : formatShort(item.deliveredAt);
+  return (
+    <li className={`card ${styles.item} ${item.error ? styles.itemFailed : ""}`}>
+      <strong>{item.clientName}</strong>
+      <div className={styles.itemMeta}>
+        <span>
+          {cleanInvoice(item.invoiceNumber)} · {when}
+        </span>
+        {uploading ? (
+          <span className={`${styles.syncBadge} ${styles.syncUploading}`}>
+            <Spinner size={12} /> Subiendo…
+          </span>
+        ) : item.error ? (
+          <span className={`${styles.syncBadge} ${styles.syncFailed}`}>No se pudo subir</span>
+        ) : (
+          <span className={styles.syncBadge}>Pendiente de subir</span>
+        )}
+      </div>
+      {item.error && <p className={styles.itemError}>{item.error}</p>}
+    </li>
   );
 }
