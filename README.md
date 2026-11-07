@@ -9,7 +9,7 @@ Stack: Vite + React + TypeScript, CSS Modules, Convex (base de datos, fotos y lo
 
 ## Configuración inicial
 
-Requiere Node.js 20 o más reciente.
+Requiere Node.js 20 o más reciente. 
 
 1. **Instalar dependencias**
 
