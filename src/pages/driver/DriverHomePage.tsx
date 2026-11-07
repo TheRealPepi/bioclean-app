@@ -12,12 +12,13 @@ import type { Me } from "../../lib/me";
 import type { OutboxItem } from "../../lib/outbox";
 import { useOutbox } from "../../lib/OutboxProvider";
 import { useCachedQuery } from "../../lib/useCachedQuery";
+import type { ClientListState } from "../../lib/useClientList";
 import { useOnline } from "../../lib/useOnline";
 import styles from "./DriverHomePage.module.css";
 
 type SavedToast = { saved: string; queued?: boolean };
 
-export function DriverHomePage({ me }: { me: Me }) {
+export function DriverHomePage({ me, clientList }: { me: Me; clientList: ClientListState }) {
   const navigate = useNavigate();
   const location = useLocation();
   const online = useOnline();
@@ -53,6 +54,7 @@ export function DriverHomePage({ me }: { me: Me }) {
       <div className={styles.greeting}>
         <h1>Hola, {me.name.split(" ")[0]}</h1>
         <p>{formatLongDate(Date.now())}</p>
+        <ClientListInfo {...clientList} online={online} today={today} />
       </div>
 
       <InstallBanner />
@@ -163,6 +165,33 @@ export function DriverHomePage({ me }: { me: Me }) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Lets the driver check, before leaving the signal area, that the client list is on the phone. */
+function ClientListInfo({
+  clients,
+  syncedAt,
+  online,
+  today,
+}: ClientListState & { online: boolean; today: string }) {
+  if (clients === undefined) {
+    return online ? null : (
+      <p className={styles.clientsInfo}>
+        Abre la app con señal para descargar la lista de clientes.
+      </p>
+    );
+  }
+  const count = `${clients.length} ${clients.length === 1 ? "cliente disponible" : "clientes disponibles"} sin señal`;
+  const when =
+    syncedAt === undefined
+      ? ""
+      : ` · actualizada ${isoDate(syncedAt) === today ? `hoy ${formatTime(syncedAt)}` : formatShort(syncedAt)}`;
+  return (
+    <p className={styles.clientsInfo}>
+      {count}
+      {when}
+    </p>
   );
 }
 

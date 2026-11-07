@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../../../convex/_generated/api";
-import { cleanInvoice } from "../../../convex/lib/text";
+import { cleanInvoice, cleanName, normalizeKey } from "../../../convex/lib/text";
 import { ClientCombobox } from "../../components/ClientCombobox";
 import { CloseIcon } from "../../components/Icons";
 import { PhotoCapture } from "../../components/PhotoCapture";
@@ -19,7 +18,7 @@ import {
 import type { Me } from "../../lib/me";
 import { PhotoReadError } from "../../lib/outbox";
 import { useOutbox } from "../../lib/OutboxProvider";
-import { useCachedQuery } from "../../lib/useCachedQuery";
+import type { ClientList } from "../../lib/useClientList";
 import { useOnline } from "../../lib/useOnline";
 import { InvoiceStep, LocationStep, ReviewStep } from "./steps";
 import styles from "./NewDeliveryWizard.module.css";
@@ -82,11 +81,26 @@ function isStepValid(key: StepKey, d: Draft): boolean {
   }
 }
 
-export function NewDeliveryWizard({ me }: { me: Me }) {
+export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList | undefined }) {
   const navigate = useNavigate();
   const online = useOnline();
   const outbox = useOutbox()!;
-  const clients = useCachedQuery(api.clients.list, {}, "clients");
+
+  // New clients typed in deliveries still waiting to upload, so the driver can
+  // pick them again without signal. The server matches them by name on upload.
+  const clientOptions = useMemo(() => {
+    if (!clients) return undefined;
+    const known = new Set(clients.map((c) => normalizeKey(c.name)));
+    const pending: { name: string }[] = [];
+    for (const item of outbox.items) {
+      const key = normalizeKey(item.clientName);
+      if (item.clientId || !key || known.has(key)) continue;
+      known.add(key);
+      pending.push({ name: cleanName(item.clientName) });
+    }
+    if (pending.length === 0) return clients;
+    return [...clients, ...pending].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [clients, outbox.items]);
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -171,7 +185,8 @@ export function NewDeliveryWizard({ me }: { me: Me }) {
 
         {step.key === "client" && (
           <ClientCombobox
-            clients={clients}
+            clients={clientOptions}
+            offline={!online}
             value={{ clientId: draft.clientId, clientName: draft.clientName }}
             onChange={(v) => patch({ clientId: v.clientId, clientName: v.clientName })}
           />

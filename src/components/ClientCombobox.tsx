@@ -5,17 +5,20 @@ import { CheckIcon, PlusIcon } from "./Icons";
 import styles from "./ClientCombobox.module.css";
 import { Spinner } from "./Spinner";
 
-type Client = { _id: Id<"clients">; name: string };
+/** No `_id`: a new client typed offline that hasn't been uploaded yet. */
+type Client = { _id?: Id<"clients">; name: string };
 export type ClientValue = { clientId?: Id<"clients">; clientName: string };
 
 const MAX_RESULTS = 40;
 
 export function ClientCombobox({
   clients,
+  offline,
   value,
   onChange,
 }: {
   clients: Client[] | undefined;
+  offline: boolean;
   value: ClientValue;
   onChange: (value: ClientValue) => void;
 }) {
@@ -82,22 +85,28 @@ export function ClientCombobox({
           </li>
         )}
         {matches.map((client) => (
-          <li key={client._id}>
+          <li key={client._id ?? `new:${client.name}`}>
             <button
               type="button"
               className={styles.option}
               onClick={() => onChange({ clientId: client._id, clientName: client.name })}
             >
               <span>{client.name}</span>
-              {exact?._id === client._id && <CheckIcon size={18} className={styles.match} />}
+              {exact === client && <CheckIcon size={18} className={styles.match} />}
             </button>
           </li>
         ))}
-        {clients === undefined && (
-          <li className={styles.empty}>
-            <Spinner size={22} />
-          </li>
-        )}
+        {clients === undefined &&
+          (offline ? (
+            <li className={styles.empty}>
+              Sin señal: la lista de clientes aún no se ha descargado en este teléfono. Escribe el
+              nombre del cliente para agregarlo.
+            </li>
+          ) : (
+            <li className={styles.empty}>
+              <Spinner size={22} />
+            </li>
+          ))}
         {clients !== undefined && !key && clients.length === 0 && (
           <li className={styles.empty}>Aún no hay clientes. Escribe el nombre para agregarlo.</li>
         )}

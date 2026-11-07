@@ -15,6 +15,11 @@
   color: var(--muted);
 }
 
+.greeting .clientsInfo {
+  margin-top: 6px;
+  font-size: 13px;
+}
+
 .draft {
   display: grid;
   gap: 12px;

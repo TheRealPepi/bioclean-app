@@ -7,6 +7,7 @@ import { FullScreenSpinner } from "./components/Spinner";
 import type { Me } from "./lib/me";
 import { clearCache, readCache, writeCache } from "./lib/offlineCache";
 import { OutboxProvider } from "./lib/OutboxProvider";
+import { useClientList } from "./lib/useClientList";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { ClientsPage } from "./pages/admin/ClientsPage";
 import { DeliveriesPage } from "./pages/admin/DeliveriesPage";
@@ -76,12 +77,13 @@ export default function App() {
 }
 
 function DriverApp({ me }: { me: Me }) {
+  const clientList = useClientList();
   return (
     <OutboxProvider me={me}>
       <Routes>
-        <Route path="nueva" element={<NewDeliveryWizard me={me} />} />
+        <Route path="nueva" element={<NewDeliveryWizard me={me} clients={clientList.clients} />} />
         <Route element={<DriverLayout me={me} />}>
-          <Route index element={<DriverHomePage me={me} />} />
+          <Route index element={<DriverHomePage me={me} clientList={clientList} />} />
           <Route path="entregas/:id" element={<DeliveryPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
