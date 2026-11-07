@@ -17,6 +17,7 @@ import {
   type PhotoKey,
 } from "../../lib/draft";
 import type { Me } from "../../lib/me";
+import { PhotoReadError } from "../../lib/outbox";
 import { useOutbox } from "../../lib/OutboxProvider";
 import { useCachedQuery } from "../../lib/useCachedQuery";
 import { useOnline } from "../../lib/useOnline";
@@ -121,8 +122,12 @@ export function NewDeliveryWizard({ me }: { me: Me }) {
     setSubmitting(true);
     try {
       await outbox.enqueue(d);
-    } catch {
-      setError("No se pudo guardar en el teléfono. Revisa que tenga espacio libre e inténtalo de nuevo.");
+    } catch (e) {
+      setError(
+        e instanceof PhotoReadError
+          ? "No se pudo leer una de las fotos. Vuelve a tomar las fotos e inténtalo de nuevo."
+          : "No se pudo guardar en el teléfono. Revisa que tenga espacio libre e inténtalo de nuevo.",
+      );
       setSubmitting(false);
       return;
     }

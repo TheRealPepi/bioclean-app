@@ -18,9 +18,12 @@ import {
   addToOutbox,
   listOutbox,
   outboxItemFromDraft,
+  photoBytes,
+  PhotoReadError,
   removeFromOutbox,
   updateOutboxItem,
   type OutboxItem,
+  type StoredPhoto,
 } from "./outbox";
 import { useOnline } from "./useOnline";
 
@@ -92,22 +95,29 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
   }, [refresh]);
 
   const uploadPhoto = useCallback(
-    async (photo: Blob): Promise<Id<"_storage">> => {
+    async (photo: StoredPhoto): Promise<Id<"_storage">> => {
+      // Read before the request, so an unreadable photo isn't mistaken for no signal.
+      const { bytes, type } = await photoBytes(photo);
       const url = await generateUploadUrl();
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+      const networkError = (e: unknown) => {
+        throw new UploadNetworkError(String(e));
+      };
       try {
         const response = await fetch(url, {
           method: "POST",
-          headers: { "Content-Type": photo.type || "image/jpeg" },
-          body: photo,
+          headers: { "Content-Type": type },
+          body: bytes,
           signal: controller.signal,
-        });
+        }).catch(networkError);
+        // A 5xx is a server hiccup worth retrying; a 4xx will fail every time.
+        if (response.status >= 500) throw new UploadNetworkError(`Upload failed: ${response.status}`);
         if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
-        const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
+        const { storageId } = (await response.json().catch(networkError)) as {
+          storageId: Id<"_storage">;
+        };
         return storageId;
-      } catch (e) {
-        throw new UploadNetworkError(String(e));
       } finally {
         clearTimeout(timer);
       }
@@ -163,7 +173,10 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
             if (e instanceof UploadNetworkError) break; // No signal: try again later.
             // Rejected by the server: keep it on the phone for the driver to
             // retry, uploading the photos again in case they were the problem.
-            await updateOutboxItem(item.id, { error: errorMessage(e), photoIds: {} });
+            await updateOutboxItem(item.id, {
+              error: e instanceof PhotoReadError ? e.message : errorMessage(e),
+              photoIds: {},
+            });
           } finally {
             setUploadingId(null);
             await refresh();
@@ -207,7 +220,7 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
 
   const enqueue = useCallback(
     async (draft: Draft) => {
-      await addToOutbox(outboxItemFromDraft(draft, me._id));
+      await addToOutbox(await outboxItemFromDraft(draft, me._id));
       await refresh();
       if (canSyncRef.current) void sync();
     },

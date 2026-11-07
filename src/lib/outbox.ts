@@ -16,7 +16,7 @@ export type OutboxItem = {
   clientId?: Id<"clients">;
   clientName: string;
   invoiceNumber: string;
-  photos: Record<PhotoKey, Blob>;
+  photos: Record<PhotoKey, StoredPhoto>;
   /** Photos already uploaded, so a retry only uploads the missing ones. */
   photoIds: Partial<Record<PhotoKey, Id<"_storage">>>;
   location: { lat: number; lng: number; accuracy?: number };
@@ -31,7 +31,34 @@ export type OutboxItem = {
 let store: UseStore | undefined;
 const outboxStore = () => (store ??= createStore("bioclean-outbox", "items"));
 
-export function outboxItemFromDraft(draft: Draft, userId: string): OutboxItem {
+/**
+ * A photo's raw bytes. Items saved by older versions hold a Blob instead: on
+ * iPhone, a Blob read back from IndexedDB can fail when sent with fetch ("The
+ * network connection was lost"), so new items store the bytes themselves.
+ */
+export type StoredPhoto = { bytes: ArrayBuffer; type: string } | Blob;
+
+/** A photo saved on the phone can no longer be read. Retrying won't help. */
+export class PhotoReadError extends Error {
+  constructor() {
+    super("No se pudo leer una foto guardada en el teléfono.");
+  }
+}
+
+export async function photoBytes(photo: StoredPhoto): Promise<{ bytes: ArrayBuffer; type: string }> {
+  if (!(photo instanceof Blob)) return photo;
+  try {
+    return { bytes: await photo.arrayBuffer(), type: photo.type || "image/jpeg" };
+  } catch {
+    throw new PhotoReadError();
+  }
+}
+
+export async function outboxItemFromDraft(draft: Draft, userId: string): Promise<OutboxItem> {
+  const photos = {} as Record<PhotoKey, StoredPhoto>;
+  for (const [key, blob] of Object.entries(draft.photos) as [PhotoKey, Blob][]) {
+    photos[key] = await photoBytes(blob);
+  }
   return {
     id: crypto.randomUUID(),
     userId,
@@ -39,7 +66,7 @@ export function outboxItemFromDraft(draft: Draft, userId: string): OutboxItem {
     clientId: draft.clientId,
     clientName: draft.clientName,
     invoiceNumber: draft.invoiceNumber,
-    photos: draft.photos as Record<PhotoKey, Blob>,
+    photos,
     photoIds: {},
     location: draft.location!,
     status: draft.status!,
