@@ -2,8 +2,8 @@
 
 Web app para registrar las entregas de los choferes y consultarlas desde la oficina.
 
-- **Choferes (teléfono):** botón **+ Nueva entrega** → asistente paso a paso: cliente, número de factura, foto de la factura, foto de quien recibe, foto de la mercancía, ubicación GPS, estatus y anotaciones (obligatorias si el estatus no es "Entrega exitosa"). Ven sus entregas del día. Si se cierra el navegador o se va la señal, el avance (fotos incluidas) se guarda en el teléfono y pueden continuar.
-- **Administrador (computadora):** tabla de entregas con filtros por fecha, chofer, cliente/factura y estatus; exportación a Excel (CSV); detalle de cada entrega con fotos y mapa; **Descargar PDF** del comprobante para adjuntarlo a un correo. Pestañas para ver choferes y para renombrar/fusionar clientes duplicados.
+- **Choferes (teléfono):** botón **+ Nueva entrega** → asistente paso a paso: cliente, vehículo, facturas (número y foto de cada una; botón **Agregar otra factura** si el cliente pide varias), foto de quien recibe, foto de la mercancía, ubicación, estatus, pago (**Pagado** o **Crédito**) y anotaciones (obligatorias si el estatus no es "Entrega exitosa"). En el paso de ubicación se muestra la ubicación guardada del cliente: el chofer toca **Continuar con esta ubicación** o **Modificar ubicación para esta entrega** (toma el GPS; solo cambia esa entrega, no la ubicación guardada del cliente). Ven sus entregas del día. Si se cierra el navegador o se va la señal, el avance (fotos incluidas) se guarda en el teléfono y pueden continuar.
+- **Administrador (computadora):** tabla de entregas con filtros por fecha, chofer, cliente/factura y estatus; exportación a Excel (CSV); detalle de cada entrega con fotos y mapa; **Descargar PDF** del comprobante para adjuntarlo a un correo. Filtro por pago (pagado/crédito). Pestañas para ver choferes, renombrar/fusionar clientes duplicados (y quitar la ubicación guardada de un cliente que se mudó) y agregar, renombrar o eliminar **Vehículos**.
 
 Stack: Vite + React + TypeScript, CSS Modules, Convex (base de datos, fotos y login con Google vía Convex Auth).
 
@@ -99,6 +99,15 @@ npx convex run deliveries:backfillDeliveredAt --prod   # producción
 
 Repítelo hasta que responda `done: true`.
 
+**Al publicar la versión con ubicación guardada de clientes**, corre una vez (cada cliente toma la ubicación de su entrega más reciente; se puede repetir sin problema):
+
+```sh
+npx convex run clients:backfillLocations          # desarrollo
+npx convex run clients:backfillLocations --prod   # producción
+```
+
+Después, agrega los vehículos en la pestaña **Vehículos**. Mientras no haya vehículos, el paso de vehículo no detiene al chofer.
+
 **Íconos:** se generan desde `public/app-icon.svg` con `npx pwa-assets-generator`.
 
 ## Notas
@@ -106,7 +115,9 @@ Repítelo hasta que responda `done: true`.
 - **Zona horaria:** las fechas se muestran y filtran en hora de Cozumel (UTC-5 todo el año).
 - **Fotos:** se reducen en el teléfono (máx. 1600 px, JPEG) antes de subirlas, para que suban rápido con datos móviles.
 - **Clientes:** si un chofer escribe un cliente que no existe, se crea automáticamente. Mayúsculas, acentos, puntos y espacios extra se ignoran al comparar ("Hotel Casa México." = "HOTEL CASA MEXICO"). Si aun así se crean duplicados, únelos en **Clientes → Fusionar**.
-- **Factura repetida:** el asistente avisa (sin bloquear) si el número de factura ya se registró antes.
+- **Factura repetida:** el asistente avisa (sin bloquear) si alguno de los números de factura ya se registró antes.
+- **Ubicación del cliente:** la primera entrega de un cliente guarda su ubicación. En las siguientes, si el chofer la modifica a más de 75 m, la entrega queda marcada como *Ubicación modificada en esta entrega*. Al continuar con la ubicación guardada, la app toma el GPS del chofer en segundo plano como comprobante (se ve en el detalle de la entrega).
+- **Vehículos:** la lista se guarda en el teléfono como la de clientes, así que funciona sin señal. Eliminar un vehículo solo lo oculta para los choferes; las entregas anteriores lo conservan y se puede restaurar.
 
 ## Estructura
 
@@ -114,7 +125,7 @@ Repítelo hasta que responda `done: true`.
 convex/            Backend: esquema, funciones y reglas de acceso
   lib/access.ts    Roles a partir de ADMIN_EMAILS / ALLOWED_EMAILS
 src/
-  pages/admin/     Entregas, Choferes, Clientes
+  pages/admin/     Entregas, Choferes, Clientes, Vehículos
   pages/driver/    Inicio del chofer y asistente de nueva entrega
   pages/DeliveryPage.tsx   Detalle de entrega (admin y chofer)
   lib/pdf.ts       Comprobante PDF

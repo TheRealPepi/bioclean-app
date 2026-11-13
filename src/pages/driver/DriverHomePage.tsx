@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
-import { cleanInvoice } from "../../../convex/lib/text";
 import { InstallBanner } from "../../components/InstallBanner";
 import { CheckIcon, PlusIcon, UploadIcon } from "../../components/Icons";
 import { CenteredSpinner, Spinner } from "../../components/Spinner";
@@ -9,16 +8,25 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { formatLongDate, formatShort, formatTime, isoDate, startOfDay } from "../../lib/dates";
 import { clearDraft, draftHasContent, loadDraft, type Draft } from "../../lib/draft";
 import type { Me } from "../../lib/me";
-import type { OutboxItem } from "../../lib/outbox";
+import { invoiceLabel, type OutboxItem } from "../../lib/outbox";
 import { useOutbox } from "../../lib/OutboxProvider";
 import { useCachedQuery } from "../../lib/useCachedQuery";
 import type { ClientListState } from "../../lib/useClientList";
 import { useOnline } from "../../lib/useOnline";
+import type { Vehicle } from "../../lib/useVehicleList";
 import styles from "./DriverHomePage.module.css";
 
 type SavedToast = { saved: string; queued?: boolean };
 
-export function DriverHomePage({ me, clientList }: { me: Me; clientList: ClientListState }) {
+export function DriverHomePage({
+  me,
+  clientList,
+  vehicles,
+}: {
+  me: Me;
+  clientList: ClientListState;
+  vehicles: Vehicle[] | undefined;
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const online = useOnline();
@@ -54,7 +62,12 @@ export function DriverHomePage({ me, clientList }: { me: Me; clientList: ClientL
       <div className={styles.greeting}>
         <h1>Hola, {me.name.split(" ")[0]}</h1>
         <p>{formatLongDate(Date.now())}</p>
-        <ClientListInfo {...clientList} online={online} today={today} />
+        <ClientListInfo
+          {...clientList}
+          vehicleCount={vehicles?.length}
+          online={online}
+          today={today}
+        />
       </div>
 
       <InstallBanner />
@@ -172,9 +185,10 @@ export function DriverHomePage({ me, clientList }: { me: Me; clientList: ClientL
 function ClientListInfo({
   clients,
   syncedAt,
+  vehicleCount,
   online,
   today,
-}: ClientListState & { online: boolean; today: string }) {
+}: ClientListState & { vehicleCount: number | undefined; online: boolean; today: string }) {
   if (clients === undefined) {
     return online ? null : (
       <p className={styles.clientsInfo}>
@@ -182,7 +196,9 @@ function ClientListInfo({
       </p>
     );
   }
-  const count = `${clients.length} ${clients.length === 1 ? "cliente disponible" : "clientes disponibles"} sin señal`;
+  const vehicles =
+    vehicleCount ? ` y ${vehicleCount} ${vehicleCount === 1 ? "vehículo" : "vehículos"}` : "";
+  const count = `${clients.length} ${clients.length === 1 ? "cliente" : "clientes"}${vehicles} ${clients.length === 1 && !vehicles ? "disponible" : "disponibles"} sin señal`;
   const when =
     syncedAt === undefined
       ? ""
@@ -211,7 +227,7 @@ function WaitingItem({
       <strong>{item.clientName}</strong>
       <div className={styles.itemMeta}>
         <span>
-          {cleanInvoice(item.invoiceNumber)} · {when}
+          {invoiceLabel(item)} · {when}
         </span>
         {uploading ? (
           <span className={`${styles.syncBadge} ${styles.syncUploading}`}>

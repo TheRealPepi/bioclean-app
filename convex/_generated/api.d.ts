@@ -13,8 +13,10 @@ import type * as clients from "../clients.js";
 import type * as deliveries from "../deliveries.js";
 import type * as http from "../http.js";
 import type * as lib_access from "../lib/access.js";
+import type * as lib_geo from "../lib/geo.js";
 import type * as lib_text from "../lib/text.js";
 import type * as users from "../users.js";
+import type * as vehicles from "../vehicles.js";
 
 import type {
   ApiFromModules,
@@ -28,8 +30,10 @@ declare const fullApi: ApiFromModules<{
   deliveries: typeof deliveries;
   http: typeof http;
   "lib/access": typeof lib_access;
+  "lib/geo": typeof lib_geo;
   "lib/text": typeof lib_text;
   users: typeof users;
+  vehicles: typeof vehicles;
 }>;
 
 /**

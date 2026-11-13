@@ -9,10 +9,13 @@ export function PhotoCapture({
   value,
   onChange,
   alt,
+  compact,
 }: {
   value: Blob | undefined;
   onChange: (photo: Blob) => void;
   alt: string;
+  /** Smaller, for several photos on the same screen. */
+  compact?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -38,7 +41,7 @@ export function PhotoCapture({
   const openCamera = () => inputRef.current?.click();
 
   return (
-    <div>
+    <div className={compact ? styles.compact : undefined}>
       <input
         ref={inputRef}
         type="file"

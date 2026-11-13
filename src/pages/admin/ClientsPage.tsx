@@ -4,10 +4,12 @@ import { Link } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { normalizeKey } from "../../../convex/lib/text";
+import { ExternalIcon } from "../../components/Icons";
 import { Modal } from "../../components/Modal";
 import { CenteredSpinner } from "../../components/Spinner";
 import { formatShort, isoDate, shiftDays } from "../../lib/dates";
 import { errorMessage } from "../../lib/errors";
+import { googleMapsUrl } from "../../lib/maps";
 import styles from "./ListPage.module.css";
 
 type Client = {
@@ -15,10 +17,12 @@ type Client = {
   name: string;
   deliveryCount: number;
   lastDeliveryAt: number | null;
+  location: { lat: number; lng: number } | null;
 };
 
 export function ClientsPage() {
   const clients = useQuery(api.clients.list);
+  const clearLocation = useMutation(api.clients.clearLocation);
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<Id<"clients"> | null>(null);
   const [merging, setMerging] = useState<Client | null>(null);
@@ -62,6 +66,7 @@ export function ClientsPage() {
                 <th>Cliente</th>
                 <th className={styles.num}>Entregas</th>
                 <th className={styles.hideMobile}>Última entrega</th>
+                <th className={styles.hideMobile}>Ubicación</th>
                 <th />
               </tr>
             </thead>
@@ -69,7 +74,7 @@ export function ClientsPage() {
               {filtered.map((client) =>
                 editingId === client._id ? (
                   <tr key={client._id}>
-                    <td colSpan={4}>
+                    <td colSpan={5}>
                       <RenameRow client={client} onDone={() => setEditingId(null)} />
                     </td>
                   </tr>
@@ -83,6 +88,20 @@ export function ClientsPage() {
                     <td className={styles.num}>{client.deliveryCount}</td>
                     <td className={`${styles.muted} ${styles.hideMobile}`}>
                       {client.lastDeliveryAt ? formatShort(client.lastDeliveryAt) : "—"}
+                    </td>
+                    <td className={styles.hideMobile}>
+                      {client.location ? (
+                        <a
+                          className={styles.locationCell}
+                          href={googleMapsUrl(client.location)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Ver mapa <ExternalIcon size={14} />
+                        </a>
+                      ) : (
+                        <span className={styles.muted}>—</span>
+                      )}
                     </td>
                     <td>
                       <div className={styles.actions}>
@@ -101,6 +120,25 @@ export function ClientsPage() {
                         >
                           Fusionar…
                         </button>
+                        {client.location && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `¿Quitar la ubicación guardada de ${client.name}? La próxima entrega guardará una nueva.`,
+                                )
+                              ) {
+                                void clearLocation({ clientId: client._id }).catch((e) =>
+                                  alert(errorMessage(e)),
+                                );
+                              }
+                            }}
+                          >
+                            Quitar ubicación
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
