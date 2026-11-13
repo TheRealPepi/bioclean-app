@@ -159,3 +159,99 @@
   text-align: center;
   color: var(--muted);
 }
+
+.centered {
+  display: grid;
+  place-items: center;
+  padding: 32px 0;
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--green-50);
+  color: var(--green-900);
+  font-size: 14px;
+}
+
+.info svg {
+  flex-shrink: 0;
+}
+
+.hintSmall {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.linkButton {
+  justify-self: center;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--green-800);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.choices {
+  display: grid;
+  gap: 10px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 60px;
+  padding: 0 18px;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.choice:hover {
+  border-color: var(--green-700);
+}
+
+.choiceSelected {
+  border-color: var(--green-700);
+  background: var(--green-50);
+  color: var(--green-900);
+}
+
+.invoiceCard {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.invoiceHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.invoiceHeader .linkButton {
+  color: var(--danger, #b91c1c);
+}
+
+.reviewStacked {
+  display: grid;
+  gap: 2px;
+}

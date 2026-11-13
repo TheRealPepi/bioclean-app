@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent } from "react";
-import { compressImage } from "../lib/image";
+import { compressImage, PHOTO_PRESETS, type PhotoKind } from "../lib/image";
 import { useObjectUrl } from "../lib/useObjectUrl";
 import { CameraIcon } from "./Icons";
 import styles from "./PhotoCapture.module.css";
@@ -9,10 +9,16 @@ export function PhotoCapture({
   value,
   onChange,
   alt,
+  compact,
+  kind = "scene",
 }: {
   value: Blob | undefined;
   onChange: (photo: Blob) => void;
   alt: string;
+  /** Smaller, for several photos on the same screen. */
+  compact?: boolean;
+  /** "document" for facturas, which must stay readable; "scene" for everything else. */
+  kind?: PhotoKind;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -26,7 +32,8 @@ export function PhotoCapture({
     setBusy(true);
     setError(null);
     try {
-      const { blob } = await compressImage(file);
+      const { maxSide, quality } = PHOTO_PRESETS[kind];
+      const { blob } = await compressImage(file, maxSide, quality);
       onChange(blob);
     } catch {
       setError("No se pudo leer la foto. Inténtalo de nuevo.");
@@ -38,7 +45,7 @@ export function PhotoCapture({
   const openCamera = () => inputRef.current?.click();
 
   return (
-    <div>
+    <div className={compact ? styles.compact : undefined}>
       <input
         ref={inputRef}
         type="file"

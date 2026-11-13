@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin, requireUser } from "./lib/access";
 import { cleanName, normalizeKey } from "./lib/text";
 
@@ -15,6 +15,7 @@ export const list = query({
         name: c.name,
         deliveryCount: c.deliveryCount,
         lastDeliveryAt: c.lastDeliveryAt ?? null,
+        location: c.location ?? null,
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "es"));
   },
@@ -93,7 +94,43 @@ export const merge = mutation({
     await ctx.db.patch(intoId, {
       deliveryCount: into.deliveryCount + from.deliveryCount,
       lastDeliveryAt: Math.max(into.lastDeliveryAt ?? 0, from.lastDeliveryAt ?? 0) || undefined,
+      location: into.location ?? from.location,
     });
     await ctx.db.delete(fromId);
+  },
+});
+
+/** For a client who moved: the next delivery records a new saved location. */
+export const clearLocation = mutation({
+  args: { clientId: v.id("clients") },
+  handler: async (ctx, { clientId }) => {
+    await requireAdmin(ctx);
+    const client = await ctx.db.get(clientId);
+    if (!client) throw new ConvexError("El cliente ya no existe.");
+    await ctx.db.patch(clientId, { location: undefined });
+  },
+});
+
+/**
+ * Run once after deploying saved client locations, so existing clients get the
+ * location of their latest delivery: `npx convex run clients:backfillLocations`
+ * (add `--prod` for production). Safe to run again.
+ */
+export const backfillLocations = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    let updated = 0;
+    for (const client of await ctx.db.query("clients").collect()) {
+      if (client.location) continue;
+      const latest = await ctx.db
+        .query("deliveries")
+        .withIndex("by_client", (q) => q.eq("clientId", client._id))
+        .order("desc")
+        .first();
+      if (!latest) continue;
+      await ctx.db.patch(client._id, { location: latest.location });
+      updated++;
+    }
+    return { updated };
   },
 });

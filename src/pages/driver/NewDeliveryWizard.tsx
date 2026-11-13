@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { cleanInvoice, cleanName, normalizeKey } from "../../../convex/lib/text";
 import { ClientCombobox } from "../../components/ClientCombobox";
 import { CloseIcon } from "../../components/Icons";
+import { PaymentSelect } from "../../components/PaymentSelect";
 import { PhotoCapture } from "../../components/PhotoCapture";
 import { FullScreenSpinner, Spinner } from "../../components/Spinner";
 import { StatusSelect } from "../../components/StatusSelect";
@@ -16,72 +17,95 @@ import {
   type PhotoKey,
 } from "../../lib/draft";
 import type { Me } from "../../lib/me";
+import { readCache, writeCache } from "../../lib/offlineCache";
 import { PhotoReadError } from "../../lib/outbox";
 import { useOutbox } from "../../lib/OutboxProvider";
 import type { ClientList } from "../../lib/useClientList";
 import { useOnline } from "../../lib/useOnline";
-import { InvoiceStep, LocationStep, ReviewStep } from "./steps";
+import type { Vehicle } from "../../lib/useVehicleList";
+import { InvoicesStep, LocationStep, ReviewStep, VehicleStep } from "./steps";
 import styles from "./NewDeliveryWizard.module.css";
 
 type StepKey =
   | "client"
-  | "invoice"
-  | "invoicePhoto"
+  | "vehicle"
+  | "invoices"
   | "receiverPhoto"
   | "goodsPhoto"
   | "location"
   | "status"
+  | "payment"
   | "notes"
   | "review";
 
 const STEPS: { key: StepKey; title: string; hint?: string }[] = [
   { key: "client", title: "Cliente", hint: "Elige el cliente de la lista o escribe uno nuevo." },
-  { key: "invoice", title: "Número de factura" },
+  { key: "vehicle", title: "Vehículo", hint: "¿En qué vehículo haces esta entrega?" },
   {
-    key: "invoicePhoto",
-    title: "Foto de la factura",
-    hint: "Que se lean el número de factura y la firma.",
+    key: "invoices",
+    title: "Facturas",
+    hint: "Número y foto de cada factura. Que se lean el número y la firma.",
   },
   { key: "receiverPhoto", title: "Foto de quien recibe", hint: "La persona que recibe la mercancía." },
   { key: "goodsPhoto", title: "Foto de la mercancía", hint: "La mercancía entregada." },
-  {
-    key: "location",
-    title: "Ubicación de entrega",
-    hint: "Guárdala estando en el lugar de la entrega.",
-  },
+  { key: "location", title: "Ubicación de entrega" },
   { key: "status", title: "Estatus de la entrega" },
+  { key: "payment", title: "Pago", hint: "¿La entrega quedó pagada o es a crédito?" },
   { key: "notes", title: "Anotaciones" },
   { key: "review", title: "Revisa y guarda" },
 ];
 
 const PHOTO_STEPS: Partial<Record<StepKey, PhotoKey>> = {
-  invoicePhoto: "invoice",
   receiverPhoto: "receiver",
   goodsPhoto: "goods",
 };
 
-function isStepValid(key: StepKey, d: Draft): boolean {
+function invoicesValid(d: Draft): boolean {
+  const numbers = d.invoices.map((i) => cleanInvoice(i.number));
+  return (
+    d.invoices.length > 0 &&
+    d.invoices.every((i) => i.photo !== undefined) &&
+    numbers.every(Boolean) &&
+    new Set(numbers).size === numbers.length
+  );
+}
+
+function isStepValid(key: StepKey, d: Draft, vehicles: Vehicle[] | undefined): boolean {
   switch (key) {
     case "client":
       return d.clientName.trim() !== "";
-    case "invoice":
-      return cleanInvoice(d.invoiceNumber) !== "";
-    case "invoicePhoto":
+    case "vehicle":
+      // Never blocks when there's no list (not downloaded yet, or none added).
+      return !vehicles?.length || vehicles.some((v) => v._id === d.vehicleId);
+    case "invoices":
+      return invoicesValid(d);
     case "receiverPhoto":
     case "goodsPhoto":
       return d.photos[PHOTO_STEPS[key]!] !== undefined;
     case "location":
-      return d.location !== undefined;
+      return d.location !== undefined && d.locationSource !== undefined;
     case "status":
       return d.status !== undefined;
+    case "payment":
+      return d.payment !== undefined;
     case "notes":
       return d.status === "exitosa" || d.notes.trim() !== "";
     case "review":
-      return STEPS.slice(0, -1).every((s) => isStepValid(s.key, d));
+      return STEPS.slice(0, -1).every((s) => isStepValid(s.key, d, vehicles));
   }
 }
 
-export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList | undefined }) {
+const lastVehicleKey = (userId: string) => `lastVehicle:${userId}`;
+
+export function NewDeliveryWizard({
+  me,
+  clients,
+  vehicles,
+}: {
+  me: Me;
+  clients: ClientList | undefined;
+  vehicles: Vehicle[] | undefined;
+}) {
   const navigate = useNavigate();
   const online = useOnline();
   const outbox = useOutbox()!;
@@ -107,7 +131,9 @@ export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadDraft(me._id).then((saved) => setDraft(saved ?? emptyDraft()));
+    void loadDraft(me._id).then(
+      (saved) => setDraft(saved ?? emptyDraft(readCache<Vehicle>(lastVehicleKey(me._id)))),
+    );
   }, [me._id]);
 
   useEffect(() => {
@@ -119,7 +145,10 @@ export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList
   const stepIndex = Math.min(draft.step, STEPS.length - 1);
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
-  const valid = isStepValid(step.key, draft);
+  const valid = isStepValid(step.key, draft, vehicles);
+  // The client's saved location, from the list saved on the phone.
+  const savedLocation =
+    (draft.clientId && clients?.find((c) => c._id === draft.clientId)?.location) || null;
 
   const patch = (changes: Partial<Draft>) =>
     setDraft((d) => d && { ...d, ...changes, updatedAt: Date.now() });
@@ -144,6 +173,9 @@ export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList
       );
       setSubmitting(false);
       return;
+    }
+    if (d.vehicleId && d.vehicleName) {
+      writeCache(lastVehicleKey(me._id), { _id: d.vehicleId, name: d.vehicleName });
     }
     await clearDraft(me._id);
     navigate("/", { replace: true, state: { saved: d.clientName, queued: !online } });
@@ -173,7 +205,14 @@ export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList
 
       <main className={styles.body}>
         <h1 className={styles.title}>{step.title}</h1>
-        {step.key === "notes" ? (
+        {step.key === "location" ? (
+          savedLocation && (
+            <p className={styles.hint}>
+              Ubicación guardada de este cliente. Continúa con ella o modifícala si la entrega es en
+              otro lugar.
+            </p>
+          )
+        ) : step.key === "notes" ? (
           <p className={styles.hint}>
             {notesRequired
               ? "Obligatorio: explica qué pasó (qué faltó, qué se cambió, quién lo autorizó…)."
@@ -188,16 +227,29 @@ export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList
             clients={clientOptions}
             offline={!online}
             value={{ clientId: draft.clientId, clientName: draft.clientName }}
-            onChange={(v) => patch({ clientId: v.clientId, clientName: v.clientName })}
+            onChange={(v) =>
+              patch({
+                clientId: v.clientId,
+                clientName: v.clientName,
+                // The location depends on the client.
+                location: undefined,
+                locationSource: undefined,
+                driverPosition: undefined,
+              })
+            }
           />
         )}
 
-        {step.key === "invoice" && (
-          <InvoiceStep
-            value={draft.invoiceNumber}
-            onChange={(invoiceNumber) => patch({ invoiceNumber })}
-            onSubmit={() => valid && goTo(stepIndex + 1)}
+        {step.key === "vehicle" && (
+          <VehicleStep
+            vehicles={vehicles}
+            value={draft.vehicleId}
+            onChange={(v) => patch({ vehicleId: v._id, vehicleName: v.name })}
           />
+        )}
+
+        {step.key === "invoices" && (
+          <InvoicesStep value={draft.invoices} onChange={(invoices) => patch({ invoices })} />
         )}
 
         {photoKey && (
@@ -210,11 +262,26 @@ export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList
         )}
 
         {step.key === "location" && (
-          <LocationStep value={draft.location} onChange={(location) => patch({ location })} />
+          <LocationStep
+            saved={savedLocation}
+            value={draft}
+            onChange={(changes) => patch(changes)}
+            onDriverPosition={(driverPosition) =>
+              setDraft(
+                (d) =>
+                  d && (d.locationSource === "modificada" ? d : { ...d, driverPosition }),
+              )
+            }
+            onContinue={() => goTo(stepIndex + 1)}
+          />
         )}
 
         {step.key === "status" && (
           <StatusSelect value={draft.status} onChange={(status) => patch({ status })} />
+        )}
+
+        {step.key === "payment" && (
+          <PaymentSelect value={draft.payment} onChange={(payment) => patch({ payment })} />
         )}
 
         {step.key === "notes" && (
@@ -230,6 +297,7 @@ export function NewDeliveryWizard({ me, clients }: { me: Me; clients: ClientList
         {step.key === "review" && (
           <ReviewStep
             draft={draft}
+            showVehicle={Boolean(vehicles?.length || draft.vehicleId)}
             onEdit={(key) => goTo(STEPS.findIndex((s) => s.key === key))}
           />
         )}

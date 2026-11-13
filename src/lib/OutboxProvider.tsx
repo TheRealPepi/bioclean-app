@@ -16,6 +16,7 @@ import { errorMessage } from "./errors";
 import type { Me } from "./me";
 import {
   addToOutbox,
+  itemInvoices,
   listOutbox,
   outboxItemFromDraft,
   photoBytes,
@@ -27,8 +28,8 @@ import {
 } from "./outbox";
 import { useOnline } from "./useOnline";
 
-const PHOTO_KEYS: PhotoKey[] = ["invoice", "receiver", "goods"];
-// A photo is ~300 KB; on a weak signal give up after a minute and retry later.
+const PHOTO_KEYS: PhotoKey[] = ["receiver", "goods"];
+// A photo is a few hundred KB; on a weak signal give up after a minute and retry later.
 const UPLOAD_TIMEOUT_MS = 60_000;
 const RETRY_INTERVAL_MS = 30_000;
 
@@ -127,6 +128,13 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
 
   const uploadItem = useCallback(
     async (item: OutboxItem) => {
+      // Converted to the new shape on the first upload of an older item.
+      const invoices = itemInvoices(item).map((i) => ({ ...i }));
+      for (const invoice of invoices) {
+        if (invoice.photoId) continue;
+        invoice.photoId = await uploadPhoto(invoice.photo);
+        await updateOutboxItem(item.id, { invoices });
+      }
       const photoIds = { ...item.photoIds };
       for (const key of PHOTO_KEYS) {
         if (photoIds[key]) continue;
@@ -136,11 +144,14 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
       await createDelivery({
         clientId: item.clientId,
         clientName: item.clientName,
-        invoiceNumber: item.invoiceNumber,
-        invoicePhotoId: photoIds.invoice!,
+        invoices: invoices.map((i) => ({ number: i.number, photoId: i.photoId! })),
         receiverPhotoId: photoIds.receiver!,
         goodsPhotoId: photoIds.goods!,
         location: item.location,
+        locationSource: item.locationSource,
+        driverPosition: item.driverPosition,
+        vehicleId: item.vehicleId,
+        payment: item.payment,
         status: item.status,
         notes: item.notes,
         deliveredAt: item.deliveredAt,
@@ -176,6 +187,7 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
             await updateOutboxItem(item.id, {
               error: e instanceof PhotoReadError ? e.message : errorMessage(e),
               photoIds: {},
+              invoices: itemInvoices(item).map(({ photoId: _, ...i }) => i),
             });
           } finally {
             setUploadingId(null);

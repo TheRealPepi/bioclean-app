@@ -9,9 +9,12 @@ import {
   ExternalIcon,
 } from "../components/Icons";
 import { CenteredSpinner, Spinner } from "../components/Spinner";
+import { PaymentBadge } from "../components/PaymentBadge";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatLongDate, formatTime } from "../lib/dates";
+import { distanceMeters } from "../../convex/lib/geo";
 import { googleMapsUrl, osmEmbedUrl } from "../lib/maps";
+import { LOCATION_SOURCE_LABEL } from "../lib/payment";
 import { downloadDeliveryPdf, type DeliveryDetails } from "../lib/pdf";
 import styles from "./DeliveryPage.module.css";
 
@@ -39,7 +42,7 @@ export function DeliveryPage() {
   }
 
   const photos = [
-    { caption: "Factura", url: delivery.photos.invoice },
+    ...delivery.invoices.map((i) => ({ caption: `Factura ${i.number}`, url: i.url })),
     { caption: "Quien recibe", url: delivery.photos.receiver },
     { caption: "Mercancía", url: delivery.photos.goods },
   ];
@@ -53,15 +56,21 @@ export function DeliveryPage() {
 
       <section className={`card ${styles.hero}`}>
         <div>
-          <div className={styles.eyebrow}>Factura {delivery.invoiceNumber}</div>
+          <div className={styles.eyebrow}>
+            {delivery.invoices.length > 1 ? "Facturas" : "Factura"} {delivery.invoiceNumber}
+          </div>
           <h1 className={styles.client}>{delivery.clientName}</h1>
           <div className={styles.meta}>
             <span>{formatLongDate(delivery.deliveredAt)}</span>
             <span>{formatTime(delivery.deliveredAt)}</span>
             <span>Chofer: {delivery.driverName}</span>
+            {delivery.vehicleName && <span>Vehículo: {delivery.vehicleName}</span>}
           </div>
         </div>
-        <StatusBadge status={delivery.status} large />
+        <div className={styles.badges}>
+          <StatusBadge status={delivery.status} large />
+          {delivery.payment && <PaymentBadge payment={delivery.payment} large />}
+        </div>
       </section>
 
       <div className={styles.grid}>
@@ -74,6 +83,15 @@ export function DeliveryPage() {
 
         <section className={`card ${styles.section}`}>
           <h2 className={styles.sectionTitle}>Ubicación de entrega</h2>
+          {delivery.locationSource && (
+            <p
+              className={`${styles.sourceTag} ${
+                delivery.locationSource === "modificada" ? styles.sourceChanged : ""
+              }`}
+            >
+              {LOCATION_SOURCE_LABEL[delivery.locationSource]}
+            </p>
+          )}
           <iframe
             className={styles.map}
             title="Mapa de la ubicación de entrega"
@@ -90,6 +108,19 @@ export function DeliveryPage() {
               </span>
             )}
           </div>
+          {delivery.driverPosition && (
+            <p className={styles.driverPosition}>
+              Posición del chofer al registrar: a{" "}
+              {Math.round(distanceMeters(delivery.location, delivery.driverPosition))} m de la
+              ubicación
+              {delivery.driverPosition.accuracy !== undefined &&
+                ` (±${Math.round(delivery.driverPosition.accuracy)} m)`}{" "}
+              ·{" "}
+              <a href={googleMapsUrl(delivery.driverPosition)} target="_blank" rel="noreferrer">
+                Ver <ExternalIcon size={12} />
+              </a>
+            </p>
+          )}
         </section>
       </div>
 

@@ -1,7 +1,16 @@
 import { createStore, del, get, set, values, type UseStore } from "idb-keyval";
 import type { Id } from "../../convex/_generated/dataModel";
-import type { Draft, PhotoKey } from "./draft";
+import { cleanInvoice } from "../../convex/lib/text";
+import type { Draft, LatLng, PhotoKey } from "./draft";
+import type { LocationSource, Payment } from "./payment";
 import type { DeliveryStatus } from "./status";
+
+export type OutboxInvoice = {
+  number: string;
+  photo: StoredPhoto;
+  /** Set once uploaded, so a retry only uploads the missing ones. */
+  photoId?: Id<"_storage">;
+};
 
 /**
  * A finished delivery saved on the phone and waiting to be uploaded. Every
@@ -15,16 +24,38 @@ export type OutboxItem = {
   deliveredAt: number;
   clientId?: Id<"clients">;
   clientName: string;
-  invoiceNumber: string;
-  photos: Record<PhotoKey, StoredPhoto>;
+  vehicleId?: Id<"vehicles">;
+  vehicleName?: string;
+  /** Missing on items saved before several facturas were allowed (see `itemInvoices`). */
+  invoices?: OutboxInvoice[];
+  /** Only on those older items. */
+  invoiceNumber?: string;
+  photos: Record<PhotoKey, StoredPhoto> & { invoice?: StoredPhoto };
   /** Photos already uploaded, so a retry only uploads the missing ones. */
-  photoIds: Partial<Record<PhotoKey, Id<"_storage">>>;
-  location: { lat: number; lng: number; accuracy?: number };
+  photoIds: Partial<Record<PhotoKey | "invoice", Id<"_storage">>>;
+  location: LatLng;
+  locationSource?: LocationSource;
+  driverPosition?: LatLng;
   status: DeliveryStatus;
+  payment?: Payment;
   notes: string;
   /** Set when the server rejected it; it then waits for the driver to retry. */
   error?: string;
 };
+
+/** The item's facturas, also for items saved by older versions with a single one. */
+export function itemInvoices(item: OutboxItem): OutboxInvoice[] {
+  if (item.invoices) return item.invoices;
+  if (item.invoiceNumber === undefined || !item.photos.invoice) return [];
+  return [{ number: item.invoiceNumber, photo: item.photos.invoice, photoId: item.photoIds.invoice }];
+}
+
+/** Factura numbers for display, e.g. "B-1, B-2". */
+export function invoiceLabel(item: OutboxItem): string {
+  return itemInvoices(item)
+    .map((i) => cleanInvoice(i.number))
+    .join(", ");
+}
 
 // Unlike drafts, storage errors here are not ignored: the wizard must tell the
 // driver if a delivery could not be saved.
@@ -55,9 +86,9 @@ export async function photoBytes(photo: StoredPhoto): Promise<{ bytes: ArrayBuff
 }
 
 export async function outboxItemFromDraft(draft: Draft, userId: string): Promise<OutboxItem> {
-  const photos = {} as Record<PhotoKey, StoredPhoto>;
-  for (const [key, blob] of Object.entries(draft.photos) as [PhotoKey, Blob][]) {
-    photos[key] = await photoBytes(blob);
+  const invoices: OutboxInvoice[] = [];
+  for (const invoice of draft.invoices) {
+    invoices.push({ number: invoice.number, photo: await photoBytes(invoice.photo!) });
   }
   return {
     id: crypto.randomUUID(),
@@ -65,11 +96,19 @@ export async function outboxItemFromDraft(draft: Draft, userId: string): Promise
     deliveredAt: Date.now(),
     clientId: draft.clientId,
     clientName: draft.clientName,
-    invoiceNumber: draft.invoiceNumber,
-    photos,
+    vehicleId: draft.vehicleId,
+    vehicleName: draft.vehicleName,
+    invoices,
+    photos: {
+      receiver: await photoBytes(draft.photos.receiver!),
+      goods: await photoBytes(draft.photos.goods!),
+    },
     photoIds: {},
     location: draft.location!,
+    locationSource: draft.locationSource,
+    driverPosition: draft.locationSource === "guardada" ? draft.driverPosition : undefined,
     status: draft.status!,
+    payment: draft.payment,
     notes: draft.notes,
   };
 }

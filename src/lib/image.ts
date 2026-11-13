@@ -1,5 +1,14 @@
-const MAX_SIDE = 1600;
-const QUALITY = 0.72;
+export type PhotoKind = "document" | "scene";
+
+/**
+ * How much each kind of photo is shrunk before it is stored. A factura keeps
+ * its resolution so the number and the signature stay readable; photos of the
+ * receiver and the goods are only visual proof and can be smaller.
+ */
+export const PHOTO_PRESETS: Record<PhotoKind, { maxSide: number; quality: number }> = {
+  document: { maxSide: 1600, quality: 0.6 },
+  scene: { maxSide: 1280, quality: 0.6 },
+};
 
 async function decode(blob: Blob): Promise<CanvasImageSource & { width: number; height: number }> {
   try {
@@ -21,8 +30,8 @@ async function decode(blob: Blob): Promise<CanvasImageSource & { width: number; 
 /** Downscales and re-encodes an image as JPEG, so uploads are fast on mobile data. */
 export async function compressImage(
   blob: Blob,
-  maxSide = MAX_SIDE,
-  quality = QUALITY,
+  maxSide: number,
+  quality: number,
 ): Promise<{ blob: Blob; width: number; height: number }> {
   const source = await decode(blob);
   const scale = Math.min(1, maxSide / Math.max(source.width, source.height));

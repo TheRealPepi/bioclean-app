@@ -4,11 +4,13 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
 import { normalizeKey } from "../../../convex/lib/text";
 import { DownloadIcon } from "../../components/Icons";
+import { PaymentBadge } from "../../components/PaymentBadge";
 import { CenteredSpinner } from "../../components/Spinner";
 import { StatusBadge } from "../../components/StatusBadge";
 import { DAY_MS, formatShort, formatTime, isoDate, startOfDay } from "../../lib/dates";
 import { downloadCsv } from "../../lib/csv";
 import { googleMapsUrl } from "../../lib/maps";
+import { isPayment, LOCATION_SOURCE_SHORT, PAYMENT_META, PAYMENTS } from "../../lib/payment";
 import {
   isStatus,
   STATUS_META,
@@ -32,6 +34,8 @@ export function DeliveriesPage() {
   const search = params.get("q") ?? "";
   const statusParam = params.get("estatus");
   const status = isStatus(statusParam) ? statusParam : null;
+  const paymentParam = params.get("pago");
+  const payment = isPayment(paymentParam) ? paymentParam : null;
 
   const update = (key: string, value: string | null) =>
     setParams(
@@ -69,6 +73,7 @@ export function DeliveriesPage() {
     const matching = (deliveries ?? []).filter(
       (d) =>
         (!driverId || d.driverId === driverId) &&
+        (!payment || d.payment === payment) &&
         (!key ||
           normalizeKey(d.clientName).includes(key) ||
           compact(d.invoiceNumber).includes(compactKey)),
@@ -79,21 +84,36 @@ export function DeliveriesPage() {
       counts: { ...counts, all: matching.length },
       rows: status ? matching.filter((d) => d.status === status) : matching,
     };
-  }, [deliveries, driverId, search, status]);
+  }, [deliveries, driverId, payment, search, status]);
 
   function exportCsv() {
     downloadCsv(
       lo === hi ? `entregas_${lo}.csv` : `entregas_${lo}_a_${hi}.csv`,
-      ["Fecha", "Hora", "Cliente", "Factura", "Chofer", "Estatus", "Anotaciones", "Ubicación"],
+      [
+        "Fecha",
+        "Hora",
+        "Cliente",
+        "Factura",
+        "Chofer",
+        "Vehículo",
+        "Estatus",
+        "Pago",
+        "Anotaciones",
+        "Ubicación",
+        "Tipo de ubicación",
+      ],
       rows.map((d) => [
         isoDate(d.deliveredAt),
         formatTime(d.deliveredAt),
         d.clientName,
         d.invoiceNumber,
         d.driverName,
+        d.vehicleName ?? "",
         STATUS_META[d.status].label,
+        d.payment ? PAYMENT_META[d.payment].label : "",
         d.notes,
         googleMapsUrl(d.location),
+        d.locationSource ? LOCATION_SOURCE_SHORT[d.locationSource] : "",
       ]),
     );
   }
@@ -135,6 +155,21 @@ export function DeliveriesPage() {
             {driverOptions.map(([id, name]) => (
               <option key={id} value={id}>
                 {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="label">Pago</span>
+          <select
+            className="input"
+            value={payment ?? ""}
+            onChange={(e) => update("pago", e.target.value)}
+          >
+            <option value="">Todos</option>
+            {PAYMENTS.map((p) => (
+              <option key={p} value={p}>
+                {PAYMENT_META[p].label}
               </option>
             ))}
           </select>
@@ -205,6 +240,7 @@ export function DeliveriesPage() {
                 <th>Factura</th>
                 <th>Chofer</th>
                 <th>Estatus</th>
+                <th>Pago</th>
               </tr>
             </thead>
             <tbody>
@@ -218,9 +254,15 @@ export function DeliveriesPage() {
                   <td className={styles.date}>{formatShort(d.deliveredAt)}</td>
                   <td className={styles.client}>{d.clientName}</td>
                   <td className={styles.invoice}>{d.invoiceNumber}</td>
-                  <td className={styles.driver}>{d.driverName}</td>
+                  <td className={styles.driver}>
+                    {d.driverName}
+                    {d.vehicleName && <span className={styles.vehicle}>{d.vehicleName}</span>}
+                  </td>
                   <td className={styles.status}>
                     <StatusBadge status={d.status} />
+                  </td>
+                  <td className={styles.payment}>
+                    {d.payment ? <PaymentBadge payment={d.payment} /> : null}
                   </td>
                 </tr>
               ))}

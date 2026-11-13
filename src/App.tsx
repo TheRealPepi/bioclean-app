@@ -8,10 +8,12 @@ import type { Me } from "./lib/me";
 import { clearCache, readCache, writeCache } from "./lib/offlineCache";
 import { OutboxProvider } from "./lib/OutboxProvider";
 import { useClientList } from "./lib/useClientList";
+import { useVehicleList } from "./lib/useVehicleList";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { ClientsPage } from "./pages/admin/ClientsPage";
 import { DeliveriesPage } from "./pages/admin/DeliveriesPage";
 import { DriversPage } from "./pages/admin/DriversPage";
+import { VehiclesPage } from "./pages/admin/VehiclesPage";
 import { DeliveryPage } from "./pages/DeliveryPage";
 import { DriverHomePage } from "./pages/driver/DriverHomePage";
 import { DriverLayout } from "./pages/driver/DriverLayout";
@@ -67,6 +69,7 @@ export default function App() {
           <Route path="entregas/:id" element={<DeliveryPage />} />
           <Route path="choferes" element={<DriversPage />} />
           <Route path="clientes" element={<ClientsPage />} />
+          <Route path="vehiculos" element={<VehiclesPage />} />
           <Route path="*" element={<Navigate to="/entregas" replace />} />
         </Route>
       </Routes>
@@ -78,12 +81,13 @@ export default function App() {
 
 function DriverApp({ me }: { me: Me }) {
   const clientList = useClientList();
+  const vehicles = useVehicleList();
   return (
     <OutboxProvider me={me}>
       <Routes>
-        <Route path="nueva" element={<NewDeliveryWizard me={me} clients={clientList.clients} />} />
+        <Route path="nueva" element={<NewDeliveryWizard me={me} clients={clientList.clients} vehicles={vehicles} />} />
         <Route element={<DriverLayout me={me} />}>
-          <Route index element={<DriverHomePage me={me} clientList={clientList} />} />
+          <Route index element={<DriverHomePage me={me} clientList={clientList} vehicles={vehicles} />} />
           <Route path="entregas/:id" element={<DeliveryPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

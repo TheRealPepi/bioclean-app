@@ -37,3 +37,16 @@
   border-radius: var(--radius-lg);
   background: #0b1513;
 }
+
+.compact .capture {
+  aspect-ratio: auto;
+  height: 120px;
+}
+
+.compact .captureLabel {
+  font-size: 15px;
+}
+
+.compact .preview img {
+  max-height: 32dvh;
+}
