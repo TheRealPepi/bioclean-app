@@ -154,6 +154,7 @@ export function InvoicesStep({
             )}
             <PhotoCapture
               compact
+              kind="document"
               alt={`Foto de la factura ${index + 1}`}
               value={invoice.photo}
               onChange={(photo) => update(index, { photo })}

@@ -29,7 +29,7 @@ import {
 import { useOnline } from "./useOnline";
 
 const PHOTO_KEYS: PhotoKey[] = ["receiver", "goods"];
-// A photo is ~300 KB; on a weak signal give up after a minute and retry later.
+// A photo is a few hundred KB; on a weak signal give up after a minute and retry later.
 const UPLOAD_TIMEOUT_MS = 60_000;
 const RETRY_INTERVAL_MS = 30_000;
 

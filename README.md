@@ -113,7 +113,7 @@ Después, agrega los vehículos en la pestaña **Vehículos**. Mientras no haya 
 ## Notas
 
 - **Zona horaria:** las fechas se muestran y filtran en hora de Cozumel (UTC-5 todo el año).
-- **Fotos:** se reducen en el teléfono (máx. 1600 px, JPEG) antes de subirlas, para que suban rápido con datos móviles.
+- **Fotos:** se reducen en el teléfono (JPEG) antes de subirlas, para que suban rápido con datos móviles y ocupen poco espacio: la factura a máx. 1600 px, para que se lean el número y la firma; las de quien recibe y de la mercancía a máx. 1280 px. Los valores están en `PHOTO_PRESETS` (`src/lib/image.ts`).
 - **Clientes:** si un chofer escribe un cliente que no existe, se crea automáticamente. Mayúsculas, acentos, puntos y espacios extra se ignoran al comparar ("Hotel Casa México." = "HOTEL CASA MEXICO"). Si aun así se crean duplicados, únelos en **Clientes → Fusionar**.
 - **Factura repetida:** el asistente avisa (sin bloquear) si alguno de los números de factura ya se registró antes.
 - **Ubicación del cliente:** la primera entrega de un cliente guarda su ubicación. En las siguientes, si el chofer la modifica a más de 75 m, la entrega queda marcada como *Ubicación modificada en esta entrega*. Al continuar con la ubicación guardada, la app toma el GPS del chofer en segundo plano como comprobante (se ve en el detalle de la entrega).
