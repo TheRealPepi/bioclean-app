@@ -20,7 +20,11 @@ const label = (text: string) =>
 
 export function reminderEmailHtml(email: {
   company: string;
-  logo: { url: string; width: number; height: number };
+  /**
+   * Optional. Left out for now: an image hosted on a domain other than the
+   * sender's can push the email to spam. Pass it once the logo is on our own site.
+   */
+  logo?: { url: string; width: number; height: number };
   clientName: string;
   /** The sentence that says what is due and when. */
   intro: string;
@@ -30,7 +34,12 @@ export function reminderEmailHtml(email: {
   closing: string;
 }): string {
   const company = escapeHtml(email.company);
-  const logoHeight = Math.round((LOGO_DISPLAY_WIDTH * email.logo.height) / email.logo.width);
+  const header = email.logo
+    ? `<img src="${escapeHtml(email.logo.url)}" width="${LOGO_DISPLAY_WIDTH}" height="${Math.round(
+        (LOGO_DISPLAY_WIDTH * email.logo.height) / email.logo.width,
+      )}" alt="${company}" style="display:block;width:${LOGO_DISPLAY_WIDTH}px;max-width:100%;height:auto;border:0;outline:none;font-family:${FONT};font-size:22px;font-weight:700;color:${NAVY};">`
+    : `<div style="font-family:${FONT};font-size:26px;line-height:32px;font-weight:800;letter-spacing:-0.3px;color:${NAVY};">${company}</div>
+<div style="margin-top:6px;font-family:${FONT};font-size:13px;line-height:18px;color:${MUTED};">Servicio integral para su negocio &middot; Desde 1996</div>`;
 
   const invoices = email.invoiceNumbers
     .map(
@@ -57,7 +66,7 @@ export function reminderEmailHtml(email: {
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:#ffffff;border:1px solid ${LINE};border-radius:12px;overflow:hidden;">
 
 <tr><td align="center" style="padding:28px 24px 22px;background-color:#ffffff;">
-<img src="${escapeHtml(email.logo.url)}" width="${LOGO_DISPLAY_WIDTH}" height="${logoHeight}" alt="Bio Clean Green" style="display:block;width:${LOGO_DISPLAY_WIDTH}px;max-width:100%;height:auto;border:0;outline:none;font-family:${FONT};font-size:22px;font-weight:700;color:${NAVY};">
+${header}
 </td></tr>
 
 <tr><td style="padding:0;">
@@ -88,8 +97,7 @@ ${label(email.invoiceNumbers.length > 1 ? "Facturas" : "Factura")}
 </td></tr>
 
 <tr><td align="center" style="padding:18px 24px;background-color:#f8f9fc;border-top:1px solid ${LINE};font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};">
-${company} &middot; Servicio integral para su negocio desde 1996<br>
-Este es un recordatorio automático de pago.
+Este es un recordatorio automático de pago de ${company}.
 </td></tr>
 
 </table>

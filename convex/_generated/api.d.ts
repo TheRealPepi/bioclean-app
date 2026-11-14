@@ -16,7 +16,6 @@ import type * as http from "../http.js";
 import type * as lib_access from "../lib/access.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_due from "../lib/due.js";
-import type * as lib_emailLogo from "../lib/emailLogo.js";
 import type * as lib_geo from "../lib/geo.js";
 import type * as lib_reminderEmail from "../lib/reminderEmail.js";
 import type * as lib_text from "../lib/text.js";
@@ -39,7 +38,6 @@ declare const fullApi: ApiFromModules<{
   "lib/access": typeof lib_access;
   "lib/dates": typeof lib_dates;
   "lib/due": typeof lib_due;
-  "lib/emailLogo": typeof lib_emailLogo;
   "lib/geo": typeof lib_geo;
   "lib/reminderEmail": typeof lib_reminderEmail;
   "lib/text": typeof lib_text;

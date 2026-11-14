@@ -12,7 +12,6 @@ import {
 import { requireAdmin } from "./lib/access";
 import { formatIsoLong, isIsoDate, isoDate, shiftDays } from "./lib/dates";
 import { deliveredRange, dueDateFor, reminderDue, WEEK } from "./lib/due";
-import { EMAIL_LOGO_HEIGHT, EMAIL_LOGO_PATH, EMAIL_LOGO_WIDTH } from "./lib/emailLogo";
 import { reminderEmailHtml } from "./lib/reminderEmail";
 import { reminderChannel, reminderKind } from "./schema";
 
@@ -182,12 +181,6 @@ async function sendEmail(batch: Batch) {
   ].join("\n");
   const html = reminderEmailHtml({
     company: COMPANY,
-    // CONVEX_SITE_URL is this deployment's public URL, where convex/http.ts serves the logo.
-    logo: {
-      url: `${process.env.CONVEX_SITE_URL}${EMAIL_LOGO_PATH}`,
-      width: EMAIL_LOGO_WIDTH,
-      height: EMAIL_LOGO_HEIGHT,
-    },
     clientName: batch.clientName,
     intro,
     date,
