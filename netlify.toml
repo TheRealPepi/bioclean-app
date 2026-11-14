@@ -6,6 +6,13 @@
   command = "npx convex deploy --cmd 'npm run build'"
   publish = "dist"
 
+# Pull request previews only check that the site builds. They must not deploy
+# the Convex functions: the only deploy key in Netlify is the production one,
+# and Convex refuses to use it outside a production build. The preview site has
+# no backend unless VITE_CONVEX_URL is set in Netlify for deploy previews.
+[context.deploy-preview]
+  command = "npm run build"
+
 # Single-page app: let React Router handle every path (e.g. /entregas/123).
 [[redirects]]
   from = "/*"

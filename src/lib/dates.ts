@@ -1,39 +1,18 @@
-// Cozumel uses America/Cancun: UTC-5 all year (no daylight saving since 2015),
-// so day boundaries are computed with a fixed offset.
-const OFFSET_MS = 5 * 60 * 60 * 1000;
-export const DAY_MS = 24 * 60 * 60 * 1000;
+import { localParts as local, pad } from "../../convex/lib/dates";
+
+export {
+  DAY_MS,
+  daysBetween,
+  formatIsoLong,
+  isoDate,
+  shiftDays,
+  startOfDay,
+} from "../../convex/lib/dates";
+
+// Cozumel time (UTC-5 all year); see convex/lib/dates.ts for the day math.
 const TIME_ZONE = "America/Cancun";
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-
-/** Wall-clock parts in Cozumel time. */
-function local(ms: number) {
-  const d = new Date(ms - OFFSET_MS);
-  return {
-    year: d.getUTCFullYear(),
-    month: d.getUTCMonth(),
-    day: d.getUTCDate(),
-    hours: d.getUTCHours(),
-    minutes: d.getUTCMinutes(),
-  };
-}
-
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/** "YYYY-MM-DD" of the given instant in Cozumel (value for <input type="date">). */
-export function isoDate(ms: number = Date.now()): string {
-  const { year, month, day } = local(ms);
-  return `${year}-${pad(month + 1)}-${pad(day)}`;
-}
-
-/** Start of the given "YYYY-MM-DD" day in Cozumel, as a timestamp. */
-export function startOfDay(iso: string): number {
-  return Date.parse(`${iso}T00:00:00-05:00`);
-}
-
-export function shiftDays(iso: string, days: number): string {
-  return isoDate(startOfDay(iso) + days * DAY_MS);
-}
 
 /** "12:45 p.m." */
 export function formatTime(ms: number): string {

@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../../convex/_generated/api";
@@ -7,25 +8,28 @@ import { normalizeKey } from "../../../convex/lib/text";
 import { ExternalIcon } from "../../components/Icons";
 import { Modal } from "../../components/Modal";
 import { CenteredSpinner } from "../../components/Spinner";
-import { formatShort, isoDate, shiftDays } from "../../lib/dates";
+import { formatDay, formatShort, isoDate, shiftDays, startOfDay } from "../../lib/dates";
 import { errorMessage } from "../../lib/errors";
 import { googleMapsUrl } from "../../lib/maps";
+import {
+  NOTIFY_LABEL,
+  REMINDER_CHANNEL_LABEL,
+  REMINDER_KIND_LABEL,
+  type NotifyChannel,
+} from "../../lib/payment";
 import styles from "./ListPage.module.css";
 
-type Client = {
-  _id: Id<"clients">;
-  name: string;
-  deliveryCount: number;
-  lastDeliveryAt: number | null;
-  location: { lat: number; lng: number } | null;
-};
+type Client = FunctionReturnType<typeof api.clients.listAdmin>[number];
+
+const days = (n: number) => (n === 1 ? "1 día" : `${n} días`);
 
 export function ClientsPage() {
-  const clients = useQuery(api.clients.list);
+  const clients = useQuery(api.clients.listAdmin);
   const clearLocation = useMutation(api.clients.clearLocation);
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<Id<"clients"> | null>(null);
   const [merging, setMerging] = useState<Client | null>(null);
+  const [billingId, setBillingId] = useState<Id<"clients"> | null>(null);
 
   const filtered = useMemo(() => {
     const key = normalizeKey(search);
@@ -34,6 +38,8 @@ export function ClientsPage() {
 
   if (clients === undefined) return <CenteredSpinner />;
 
+  // Looked up on every render so the dialog shows what was just saved.
+  const billing = clients.find((c) => c._id === billingId);
   const today = isoDate();
   const deliveriesLink = (name: string) =>
     `/entregas?q=${encodeURIComponent(name)}&desde=${shiftDays(today, -90)}&hasta=${today}`;
@@ -43,7 +49,11 @@ export function ClientsPage() {
       <div className={styles.heading}>
         <div>
           <h1>Clientes</h1>
-          <p>Los choferes agregan clientes nuevos al registrar una entrega.</p>
+          <p>
+            Los choferes agregan clientes nuevos al registrar una entrega. En{" "}
+            <strong>Recordatorios…</strong> se configuran los avisos de pago de las entregas a
+            crédito.
+          </p>
         </div>
         <input
           className={`input ${styles.searchBox}`}
@@ -67,6 +77,7 @@ export function ClientsPage() {
                 <th className={styles.num}>Entregas</th>
                 <th className={styles.hideMobile}>Última entrega</th>
                 <th className={styles.hideMobile}>Ubicación</th>
+                <th className={styles.hideMobile}>Recordatorios de pago</th>
                 <th />
               </tr>
             </thead>
@@ -74,7 +85,7 @@ export function ClientsPage() {
               {filtered.map((client) =>
                 editingId === client._id ? (
                   <tr key={client._id}>
-                    <td colSpan={5}>
+                    <td colSpan={6}>
                       <RenameRow client={client} onDone={() => setEditingId(null)} />
                     </td>
                   </tr>
@@ -103,8 +114,31 @@ export function ClientsPage() {
                         <span className={styles.muted}>—</span>
                       )}
                     </td>
+                    <td className={styles.hideMobile}>
+                      {client.notifyBy ? (
+                        <>
+                          {NOTIFY_LABEL[client.notifyBy]}
+                          {client.creditDays !== null && (
+                            <span className={styles.muted}> · {days(client.creditDays)}</span>
+                          )}
+                        </>
+                      ) : (
+                        <span className={styles.muted}>
+                          {client.creditDays !== null
+                            ? `Sin avisos · ${days(client.creditDays)}`
+                            : "—"}
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <div className={styles.actions}>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setBillingId(client._id)}
+                        >
+                          Recordatorios…
+                        </button>
                         <button
                           type="button"
                           className="btn btn-ghost"
@@ -152,6 +186,7 @@ export function ClientsPage() {
       {merging && (
         <MergeDialog from={merging} clients={clients} onClose={() => setMerging(null)} />
       )}
+      {billing && <BillingDialog client={billing} onClose={() => setBillingId(null)} />}
     </div>
   );
 }
@@ -290,6 +325,198 @@ function MergeDialog({
         </p>
       )}
       {error && <p className="error-text">{error}</p>}
+    </Modal>
+  );
+}
+
+const CHANNEL_OPTIONS: { value: NotifyChannel | ""; label: string }[] = [
+  { value: "", label: "No avisar" },
+  { value: "email", label: "Correo" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "ambos", label: "Ambos" },
+];
+
+/** Contact data, credit days and channel for a client's payment reminders. */
+function BillingDialog({ client, onClose }: { client: Client; onClose: () => void }) {
+  const update = useMutation(api.clients.updateBilling);
+  const sendTest = useMutation(api.reminders.sendTest);
+  const history = useQuery(api.reminders.listForClient, { clientId: client._id });
+  const [email, setEmail] = useState(client.email ?? "");
+  const [whatsapp, setWhatsapp] = useState(client.whatsapp ? `+${client.whatsapp}` : "");
+  const [creditDays, setCreditDays] = useState(client.creditDays?.toString() ?? "");
+  const [notifyBy, setNotifyBy] = useState<NotifyChannel | "">(client.notifyBy ?? "");
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [tested, setTested] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // The test goes to what is saved, not to what is typed.
+  const dirty =
+    email.trim().toLowerCase() !== (client.email ?? "") ||
+    whatsapp.replace(/\D/g, "") !== (client.whatsapp ?? "") ||
+    creditDays.trim() !== (client.creditDays?.toString() ?? "") ||
+    notifyBy !== (client.notifyBy ?? "");
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await update({
+        clientId: client._id,
+        email,
+        whatsapp,
+        creditDays: creditDays.trim() === "" ? null : Number(creditDays),
+        notifyBy: notifyBy || null,
+      });
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+      setSaving(false);
+    }
+  }
+
+  async function test() {
+    setTesting(true);
+    setTested(false);
+    setError(null);
+    try {
+      await sendTest({ clientId: client._id });
+      setTested(true);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Recordatorios de pago"
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            form="billing-form"
+            className="btn btn-primary"
+            disabled={saving || !dirty}
+          >
+            Guardar
+          </button>
+        </>
+      }
+    >
+      <form
+        id="billing-form"
+        className={styles.form}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <p className={styles.formIntro}>
+          <strong>{client.name}</strong> recibe un aviso una semana antes de la fecha límite de pago
+          de cada entrega a crédito, y otro el día que vence.
+        </p>
+        <label>
+          <span className="label">Días de crédito (de la entrega a la fecha límite de pago)</span>
+          <input
+            className="input"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={365}
+            step={1}
+            placeholder="Por ejemplo, 30"
+            value={creditDays}
+            onChange={(e) => setCreditDays(e.target.value)}
+          />
+        </label>
+        <label>
+          <span className="label">Correo</span>
+          <input
+            className="input"
+            type="email"
+            placeholder="pagos@cliente.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </label>
+        <label>
+          <span className="label">WhatsApp (con clave de país)</span>
+          <input
+            className="input"
+            type="tel"
+            placeholder="+52 987 123 4567"
+            value={whatsapp}
+            onChange={(e) => setWhatsapp(e.target.value)}
+          />
+        </label>
+        <div>
+          <span className="label">Avisar por</span>
+          <div className={styles.channels} role="radiogroup" aria-label="Avisar por">
+            {CHANNEL_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={option.value === notifyBy}
+                className={`${styles.channel} ${
+                  option.value === notifyBy ? styles.channelSelected : ""
+                }`}
+                onClick={() => setNotifyBy(option.value)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {error && <p className="error-text">{error}</p>}
+      </form>
+
+      <div className={styles.history}>
+        <div className={styles.historyHeader}>
+          <span className="label">Últimos avisos</span>
+          <button
+            type="button"
+            className="btn btn-soft"
+            onClick={() => void test()}
+            disabled={testing || dirty || !client.notifyBy}
+            title={dirty ? "Guarda los cambios antes de enviar la prueba" : undefined}
+          >
+            Enviar prueba
+          </button>
+        </div>
+        {tested && (
+          <p className={styles.muted}>Prueba en camino: el resultado aparece aquí en unos segundos.</p>
+        )}
+        {history === undefined ? null : history.length === 0 ? (
+          <p className={styles.muted}>Aún no se le ha enviado ningún aviso.</p>
+        ) : (
+          <ul className={styles.historyList}>
+            {history.map((r) => (
+              <li key={r._id}>
+                <div>
+                  <strong>{REMINDER_KIND_LABEL[r.kind]}</strong> por{" "}
+                  {REMINDER_CHANNEL_LABEL[r.channel]} · {formatShort(r.sentAt)}
+                </div>
+                <div className={styles.muted}>
+                  {r.invoiceNumbers.length === 1 ? "Factura" : "Facturas"}{" "}
+                  {r.invoiceNumbers.join(", ")} · vence el {formatDay(startOfDay(r.dueDate))}
+                </div>
+                {r.status === "error" ? (
+                  <div className="error-text">No se envió: {r.error}</div>
+                ) : (
+                  <div className={styles.sent}>Enviado a {r.to}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </Modal>
   );
 }

@@ -1,4 +1,4 @@
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
@@ -11,10 +11,17 @@ import {
 import { CenteredSpinner, Spinner } from "../components/Spinner";
 import { PaymentBadge } from "../components/PaymentBadge";
 import { StatusBadge } from "../components/StatusBadge";
-import { formatLongDate, formatTime } from "../lib/dates";
+import { formatDay, formatLongDate, formatTime, startOfDay } from "../lib/dates";
+import { errorMessage } from "../lib/errors";
 import { distanceMeters } from "../../convex/lib/geo";
 import { googleMapsUrl, osmEmbedUrl } from "../lib/maps";
-import { LOCATION_SOURCE_LABEL } from "../lib/payment";
+import {
+  LOCATION_SOURCE_LABEL,
+  REMINDER_CHANNEL_LABEL,
+  REMINDER_KIND_LABEL,
+  type ReminderChannel,
+  type ReminderKind,
+} from "../lib/payment";
 import { downloadDeliveryPdf, type DeliveryDetails } from "../lib/pdf";
 import styles from "./DeliveryPage.module.css";
 
@@ -67,9 +74,12 @@ export function DeliveryPage() {
             {delivery.vehicleName && <span>Vehículo: {delivery.vehicleName}</span>}
           </div>
         </div>
-        <div className={styles.badges}>
-          <StatusBadge status={delivery.status} large />
-          {delivery.payment && <PaymentBadge payment={delivery.payment} large />}
+        <div className={styles.heroSide}>
+          <div className={styles.badges}>
+            <StatusBadge status={delivery.status} large />
+            {delivery.payment && <PaymentBadge payment={delivery.payment} large />}
+          </div>
+          <PaymentControl delivery={delivery} />
         </div>
       </section>
 
@@ -143,6 +153,48 @@ export function DeliveryPage() {
       </section>
 
       {lightbox && <Lightbox {...lightbox} onClose={() => setLightbox(null)} />}
+    </div>
+  );
+}
+
+/** Admin only: payment deadline, reminders sent and "mark as paid". */
+function PaymentControl({ delivery }: { delivery: DeliveryDetails }) {
+  const setPayment = useMutation(api.deliveries.setPayment);
+  const [saving, setSaving] = useState(false);
+
+  if (!delivery.isAdmin || !delivery.payment) return null;
+  const paid = delivery.payment === "pagado";
+
+  async function change() {
+    if (paid && !confirm("¿Volver a marcar esta entrega como crédito (pendiente de pago)?")) return;
+    setSaving(true);
+    try {
+      await setPayment({ id: delivery._id, payment: paid ? "credito" : "pagado" });
+    } catch (e) {
+      alert(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const reminders = delivery.reminded.map((marker) => {
+    const [kind, channel] = marker.split(":") as [ReminderKind, ReminderChannel];
+    return `${REMINDER_KIND_LABEL[kind].toLowerCase()} por ${REMINDER_CHANNEL_LABEL[channel]}`;
+  });
+
+  return (
+    <div className={styles.paymentControl}>
+      {paid ? (
+        delivery.paidAt !== null && <span>Marcada como pagada el {formatDay(delivery.paidAt)}</span>
+      ) : delivery.dueDate ? (
+        <span>Vence el {formatDay(startOfDay(delivery.dueDate))}</span>
+      ) : (
+        <span>Sin fecha límite: el cliente no tiene días de crédito.</span>
+      )}
+      {reminders.length > 0 && <span>Avisos enviados: {reminders.join(", ")}</span>}
+      <button type="button" className="btn btn-soft" disabled={saving} onClick={() => void change()}>
+        {paid ? "Volver a crédito" : "Marcar como pagado"}
+      </button>
     </div>
   );
 }

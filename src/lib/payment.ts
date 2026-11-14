@@ -35,3 +35,25 @@ export const LOCATION_SOURCE_SHORT: Record<LocationSource, string> = {
   modificada: "Modificada",
   nueva: "Nueva",
 };
+
+export type NotifyChannel = NonNullable<Doc<"clients">["notifyBy"]>;
+export type ReminderKind = Doc<"reminders">["kind"];
+export type ReminderChannel = Doc<"reminders">["channel"];
+
+/** Where a client gets payment reminders. */
+export const NOTIFY_LABEL: Record<NotifyChannel, string> = {
+  email: "Correo",
+  whatsapp: "WhatsApp",
+  ambos: "Correo y WhatsApp",
+};
+
+export const REMINDER_KIND_LABEL: Record<ReminderKind, string> = {
+  semana_antes: "Aviso previo",
+  vencimiento: "Día de vencimiento",
+  prueba: "Prueba",
+};
+
+export const REMINDER_CHANNEL_LABEL: Record<ReminderChannel, string> = {
+  email: "correo",
+  whatsapp: "WhatsApp",
+};

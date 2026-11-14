@@ -275,3 +275,40 @@
   color: var(--muted);
   font-size: 13px;
 }
+
+.heroSide {
+  display: grid;
+  gap: 12px;
+  justify-items: end;
+}
+
+.heroSide .badges {
+  justify-content: flex-end;
+}
+
+.paymentControl {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: right;
+}
+
+.paymentControl :global(.btn) {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+@media (max-width: 760px) {
+  .heroSide,
+  .paymentControl {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .heroSide .badges {
+    justify-content: flex-start;
+  }
+}

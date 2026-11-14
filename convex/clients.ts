@@ -2,7 +2,8 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin, requireUser } from "./lib/access";
-import { cleanName, normalizeKey } from "./lib/text";
+import { cleanEmail, cleanName, cleanPhone, isEmail, isPhone, normalizeKey } from "./lib/text";
+import { notifyChannel } from "./schema";
 
 export const list = query({
   args: {},
@@ -16,6 +17,31 @@ export const list = query({
         deliveryCount: c.deliveryCount,
         lastDeliveryAt: c.lastDeliveryAt ?? null,
         location: c.location ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  },
+});
+
+/**
+ * The admin's client list, with the payment reminder settings. Kept apart from
+ * `list` because drivers store that one on their phones.
+ */
+export const listAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const clients = await ctx.db.query("clients").collect();
+    return clients
+      .map((c) => ({
+        _id: c._id,
+        name: c.name,
+        deliveryCount: c.deliveryCount,
+        lastDeliveryAt: c.lastDeliveryAt ?? null,
+        location: c.location ?? null,
+        email: c.email ?? null,
+        whatsapp: c.whatsapp ?? null,
+        creditDays: c.creditDays ?? null,
+        notifyBy: c.notifyBy ?? null,
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "es"));
   },
@@ -80,6 +106,56 @@ export const rename = mutation({
   },
 });
 
+/** Contact data, credit days and channel for the payment reminders. */
+export const updateBilling = mutation({
+  args: {
+    clientId: v.id("clients"),
+    email: v.string(),
+    whatsapp: v.string(),
+    creditDays: v.union(v.number(), v.null()),
+    notifyBy: v.union(notifyChannel, v.null()),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const client = await ctx.db.get(args.clientId);
+    if (!client) throw new ConvexError("El cliente ya no existe.");
+
+    const email = cleanEmail(args.email);
+    if (email && !isEmail(email)) throw new ConvexError("El correo no es válido.");
+
+    const whatsapp = cleanPhone(args.whatsapp);
+    if (whatsapp && !isPhone(whatsapp)) {
+      throw new ConvexError(
+        "El número de WhatsApp no es válido. Escríbelo con clave de país, por ejemplo +52 987 123 4567.",
+      );
+    }
+
+    const { creditDays, notifyBy } = args;
+    if (creditDays !== null && (!Number.isInteger(creditDays) || creditDays < 1 || creditDays > 365)) {
+      throw new ConvexError("Los días de crédito deben ser un número entre 1 y 365.");
+    }
+
+    if (notifyBy !== null) {
+      if (notifyBy !== "whatsapp" && !email) {
+        throw new ConvexError("Escribe el correo del cliente para avisarle por correo.");
+      }
+      if (notifyBy !== "email" && !whatsapp) {
+        throw new ConvexError("Escribe el WhatsApp del cliente para avisarle por WhatsApp.");
+      }
+      if (creditDays === null) {
+        throw new ConvexError("Escribe los días de crédito para saber cuándo vence cada entrega.");
+      }
+    }
+
+    await ctx.db.patch(args.clientId, {
+      email: email || undefined,
+      whatsapp: whatsapp || undefined,
+      creditDays: creditDays ?? undefined,
+      notifyBy: notifyBy ?? undefined,
+    });
+  },
+});
+
 /** Moves every delivery of `fromId` to `intoId` and deletes `fromId`. */
 export const merge = mutation({
   args: { fromId: v.id("clients"), intoId: v.id("clients") },
@@ -95,7 +171,18 @@ export const merge = mutation({
       deliveryCount: into.deliveryCount + from.deliveryCount,
       lastDeliveryAt: Math.max(into.lastDeliveryAt ?? 0, from.lastDeliveryAt ?? 0) || undefined,
       location: into.location ?? from.location,
+      email: into.email ?? from.email,
+      whatsapp: into.whatsapp ?? from.whatsapp,
+      creditDays: into.creditDays ?? from.creditDays,
+      notifyBy: into.notifyBy ?? from.notifyBy,
     });
+    const reminders = await ctx.db
+      .query("reminders")
+      .withIndex("by_client", (q) => q.eq("clientId", fromId))
+      .collect();
+    for (const reminder of reminders) {
+      await ctx.db.patch(reminder._id, { clientId: intoId });
+    }
     await ctx.db.delete(fromId);
   },
 });

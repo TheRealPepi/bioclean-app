@@ -3,7 +3,7 @@
 Web app para registrar las entregas de los choferes y consultarlas desde la oficina.
 
 - **Choferes (teléfono):** botón **+ Nueva entrega** → asistente paso a paso: cliente, vehículo, facturas (número y foto de cada una; botón **Agregar otra factura** si el cliente pide varias), foto de quien recibe, foto de la mercancía, ubicación, estatus, pago (**Pagado** o **Crédito**) y anotaciones (obligatorias si el estatus no es "Entrega exitosa"). En el paso de ubicación se muestra la ubicación guardada del cliente: el chofer toca **Continuar con esta ubicación** o **Modificar ubicación para esta entrega** (toma el GPS; solo cambia esa entrega, no la ubicación guardada del cliente). Ven sus entregas del día. Si se cierra el navegador o se va la señal, el avance (fotos incluidas) se guarda en el teléfono y pueden continuar.
-- **Administrador (computadora):** tabla de entregas con filtros por fecha, chofer, cliente/factura y estatus; exportación a Excel (CSV); detalle de cada entrega con fotos y mapa; **Descargar PDF** del comprobante para adjuntarlo a un correo. Filtro por pago (pagado/crédito). Pestañas para ver choferes, renombrar/fusionar clientes duplicados (y quitar la ubicación guardada de un cliente que se mudó) y agregar, renombrar o eliminar **Vehículos**.
+- **Administrador (computadora):** tabla de entregas con filtros por fecha, chofer, cliente/factura y estatus; exportación a Excel (CSV); detalle de cada entrega con fotos y mapa; **Descargar PDF** del comprobante para adjuntarlo a un correo. Filtro por pago (pagado/crédito). Pestañas para ver choferes, renombrar/fusionar clientes duplicados (y quitar la ubicación guardada de un cliente que se mudó) y agregar, renombrar o eliminar **Vehículos**. En **Clientes → Recordatorios…** se configuran los avisos de pago por correo o WhatsApp de las entregas a crédito, y en el detalle de una entrega a crédito está el botón **Marcar como pagado** (ver [Recordatorios de pago](#recordatorios-de-pago)).
 
 Stack: Vite + React + TypeScript, CSS Modules, Convex (base de datos, fotos y login con Google vía Convex Auth).
 
@@ -108,6 +108,74 @@ npx convex run clients:backfillLocations --prod   # producción
 
 Después, agrega los vehículos en la pestaña **Vehículos**. Mientras no haya vehículos, el paso de vehículo no detiene al chofer.
 
+## Recordatorios de pago
+
+Cada cliente puede recibir avisos por correo, por WhatsApp o por ambos de sus entregas a **crédito** que siguen sin pagar: uno **una semana antes** de la fecha límite de pago y otro **el día que vence**.
+
+- **Fecha límite** = día de la entrega + los *días de crédito* del cliente. Si cambias los días de crédito de un cliente, cambia la fecha límite de sus entregas pendientes.
+- **Configurar un cliente:** pestaña **Clientes → Recordatorios…**: días de crédito, correo, WhatsApp y por dónde avisarle. **Enviar prueba** manda un mensaje de ejemplo a lo guardado, y ahí mismo se ven los últimos avisos enviados (y el motivo si alguno falló). Estos datos solo los ve el administrador; no se guardan en los teléfonos de los choferes.
+- **Marcar como pagado:** en el detalle de la entrega. Una entrega pagada ya no genera avisos.
+- **Un mensaje por cliente:** las facturas de un cliente que vencen el mismo día van juntas en un solo mensaje. Los mensajes llevan los números de factura y la fecha límite (la app no guarda importes).
+- **Cuándo se envían:** todos los días a las 9:00 a.m. de Cozumel (`convex/crons.ts`). Si un envío falla, se reintenta al día siguiente (el aviso del día de vencimiento, hasta 3 días después).
+- Con 7 días de crédito o menos solo se envía el aviso del día de vencimiento.
+
+### Activarlos
+
+Los avisos están **apagados** hasta definir `REMINDERS_START_DATE`. Solo las entregas hechas a partir de ese día generan avisos, así que las entregas a crédito anteriores nunca los envían:
+
+```sh
+npx convex env set REMINDERS_START_DATE "2026-12-01"          # desarrollo
+npx convex env set --prod REMINDERS_START_DATE "2026-12-01"   # producción
+```
+
+Para apagarlos: `npx convex env remove REMINDERS_START_DATE`.
+
+Para ver qué se enviaría sin enviar nada (y con otra fecha, para probar):
+
+```sh
+npx convex run reminders:run '{"dryRun": true}'
+npx convex run reminders:run '{"dryRun": true, "today": "2026-12-15"}'
+```
+
+### Correo (Resend)
+
+1. Crea una cuenta en [Resend](https://resend.com), agrega tu dominio y verifícalo con los registros DNS que indica.
+2. Crea una API key y configura:
+
+   ```sh
+   npx convex env set RESEND_API_KEY "re_..."
+   npx convex env set REMINDER_FROM_EMAIL "Bioclean Green Cozumel <cobranza@tu-dominio.com>"
+   npx convex env set REMINDER_REPLY_TO "oficina@tu-dominio.com"   # opcional
+   ```
+
+### WhatsApp (WhatsApp Cloud API de Meta)
+
+WhatsApp solo permite que una empresa inicie una conversación con **plantillas aprobadas por Meta**.
+
+1. En [Meta for Developers](https://developers.facebook.com/) crea una app de tipo *Business* con el producto **WhatsApp**, ligada a tu portafolio de negocio, y registra el número desde el que se enviarán los avisos.
+2. En *WhatsApp Manager → Plantillas de mensajes* crea estas dos plantillas, categoría **Utilidad**, idioma **Español (MEX)**, con tres variables en el cuerpo (nombre del cliente, facturas y fecha):
+
+   - `recordatorio_pago_proximo`
+
+     > Hola, {{1}}. Le recordamos que el pago de la(s) factura(s) {{2}} vence el {{3}}. Si ya realizó el pago, por favor haga caso omiso de este mensaje. Gracias. Bioclean Green Cozumel
+
+   - `recordatorio_pago_vencimiento`
+
+     > Hola, {{1}}. Le recordamos que la(s) factura(s) {{2}} tiene(n) como fecha límite de pago el {{3}}. Si ya realizó el pago, por favor haga caso omiso de este mensaje. Gracias. Bioclean Green Cozumel
+
+3. Crea un *usuario del sistema* con un token permanente con permiso `whatsapp_business_messaging` y configura:
+
+   ```sh
+   npx convex env set WHATSAPP_TOKEN "<token>"
+   npx convex env set WHATSAPP_PHONE_NUMBER_ID "<identificador del número>"
+   ```
+
+   Opcionales, si usas otros nombres o versión: `WHATSAPP_TEMPLATE_PROXIMO`, `WHATSAPP_TEMPLATE_VENCIMIENTO`, `WHATSAPP_TEMPLATE_LANG` (por defecto `es_MX`) y `WHATSAPP_API_VERSION` (por defecto `v26.0`).
+
+4. Los clientes deben haber aceptado recibir mensajes de la empresa por WhatsApp (requisito de Meta).
+
+Repite las variables con `--prod` para producción. Prueba cada cliente con **Enviar prueba** antes de activar los avisos.
+
 **Íconos:** se generan desde `public/app-icon.svg` con `npx pwa-assets-generator`.
 
 ## Notas
@@ -117,6 +185,7 @@ Después, agrega los vehículos en la pestaña **Vehículos**. Mientras no haya 
 - **Clientes:** si un chofer escribe un cliente que no existe, se crea automáticamente. Mayúsculas, acentos, puntos y espacios extra se ignoran al comparar ("Hotel Casa México." = "HOTEL CASA MEXICO"). Si aun así se crean duplicados, únelos en **Clientes → Fusionar**.
 - **Factura repetida:** el asistente avisa (sin bloquear) si alguno de los números de factura ya se registró antes.
 - **Ubicación del cliente:** la primera entrega de un cliente guarda su ubicación. En las siguientes, si el chofer la modifica a más de 75 m, la entrega queda marcada como *Ubicación modificada en esta entrega*. Al continuar con la ubicación guardada, la app toma el GPS del chofer en segundo plano como comprobante (se ve en el detalle de la entrega).
+- **Pago:** una entrega a crédito se marca como pagada desde su detalle (solo el administrador). Las entregas anteriores a esta función conservan lo que registró el chofer.
 - **Vehículos:** la lista se guarda en el teléfono como la de clientes, así que funciona sin señal. Eliminar un vehículo solo lo oculta para los choferes; las entregas anteriores lo conservan y se puede restaurar.
 
 ## Estructura
@@ -124,6 +193,9 @@ Después, agrega los vehículos en la pestaña **Vehículos**. Mientras no haya 
 ```
 convex/            Backend: esquema, funciones y reglas de acceso
   lib/access.ts    Roles a partir de ADMIN_EMAILS / ALLOWED_EMAILS
+  reminders.ts     Recordatorios de pago (correo y WhatsApp)
+  crons.ts         Tarea diaria que los envía
+  lib/due.ts       Fecha límite de pago y qué aviso toca cada día
 src/
   pages/admin/     Entregas, Choferes, Clientes, Vehículos
   pages/driver/    Inicio del chofer y asistente de nueva entrega

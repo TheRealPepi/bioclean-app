@@ -24,6 +24,27 @@ export const locationSource = v.union(
   v.literal("nueva"),
 );
 
+/** Where a client gets payment reminders. Not set = no reminders. */
+export const notifyChannel = v.union(
+  v.literal("email"),
+  v.literal("whatsapp"),
+  v.literal("ambos"),
+);
+
+export const reminderChannel = v.union(v.literal("email"), v.literal("whatsapp"));
+
+/**
+ * - semana_antes: the payment deadline is within a week.
+ * - vencimiento: the deadline is today (or was in the last few days, if an
+ *   earlier attempt failed).
+ * - prueba: sent by the admin from the client's settings.
+ */
+export const reminderKind = v.union(
+  v.literal("semana_antes"),
+  v.literal("vencimiento"),
+  v.literal("prueba"),
+);
+
 export const locationObj = v.object({
   lat: v.number(),
   lng: v.number(),
@@ -42,6 +63,13 @@ export default defineSchema({
     lastDeliveryAt: v.optional(v.number()),
     // Usual delivery location, shown to the driver to confirm or modify.
     location: v.optional(locationObj),
+    // Payment reminders (admin only: never returned to drivers, see `clients.list`).
+    email: v.optional(v.string()),
+    // Digits only, with country code and no "+": "529871234567".
+    whatsapp: v.optional(v.string()),
+    // Days between the delivery and the payment deadline of a "credito" delivery.
+    creditDays: v.optional(v.number()),
+    notifyBy: v.optional(notifyChannel),
   }).index("by_normalized", ["normalizedName"]),
 
   vehicles: defineTable({
@@ -76,6 +104,11 @@ export default defineSchema({
     vehicleId: v.optional(v.id("vehicles")),
     vehicleName: v.optional(v.string()),
     payment: v.optional(paymentType),
+    // When an admin marked a "credito" delivery as paid.
+    paidAt: v.optional(v.number()),
+    // Reminders already sent for this delivery, as "<kind>:<channel>"
+    // (e.g. "vencimiento:email"), so none is sent twice.
+    reminded: v.optional(v.array(v.string())),
     status: deliveryStatus,
     notes: v.string(),
     driverId: v.id("users"),
@@ -90,8 +123,23 @@ export default defineSchema({
   })
     .index("by_driver", ["driverId", "deliveredAt"])
     .index("by_delivered", ["deliveredAt"])
-    .index("by_client", ["clientId"])
+    .index("by_client", ["clientId", "deliveredAt"])
     .index("by_invoice", ["invoiceNumber"])
     .index("by_vehicle", ["vehicleId"])
     .index("by_client_request", ["clientRequestId"]),
+
+  // Log of every payment reminder sent (or that failed), shown to the admin.
+  reminders: defineTable({
+    clientId: v.id("clients"),
+    kind: reminderKind,
+    channel: reminderChannel,
+    // Email address or WhatsApp number it was sent to.
+    to: v.string(),
+    // Payment deadline the message was about ("YYYY-MM-DD").
+    dueDate: v.string(),
+    deliveryIds: v.array(v.id("deliveries")),
+    invoiceNumbers: v.array(v.string()),
+    status: v.union(v.literal("enviado"), v.literal("error")),
+    error: v.optional(v.string()),
+  }).index("by_client", ["clientId"]),
 });

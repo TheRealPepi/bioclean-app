@@ -10,11 +10,15 @@
 
 import type * as auth from "../auth.js";
 import type * as clients from "../clients.js";
+import type * as crons from "../crons.js";
 import type * as deliveries from "../deliveries.js";
 import type * as http from "../http.js";
 import type * as lib_access from "../lib/access.js";
+import type * as lib_dates from "../lib/dates.js";
+import type * as lib_due from "../lib/due.js";
 import type * as lib_geo from "../lib/geo.js";
 import type * as lib_text from "../lib/text.js";
+import type * as reminders from "../reminders.js";
 import type * as users from "../users.js";
 import type * as vehicles from "../vehicles.js";
 
@@ -27,11 +31,15 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   clients: typeof clients;
+  crons: typeof crons;
   deliveries: typeof deliveries;
   http: typeof http;
   "lib/access": typeof lib_access;
+  "lib/dates": typeof lib_dates;
+  "lib/due": typeof lib_due;
   "lib/geo": typeof lib_geo;
   "lib/text": typeof lib_text;
+  reminders: typeof reminders;
   users: typeof users;
   vehicles: typeof vehicles;
 }>;

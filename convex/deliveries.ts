@@ -3,6 +3,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { findOrCreateClient } from "./clients";
 import { displayName, requireAdmin, requireUser } from "./lib/access";
+import { dueDateFor } from "./lib/due";
 import { distanceMeters, SAME_PLACE_METERS } from "./lib/geo";
 import { cleanInvoice } from "./lib/text";
 import { deliveryStatus, locationObj, locationSource, paymentType } from "./schema";
@@ -136,6 +137,21 @@ export const create = mutation({
   },
 });
 
+/** Lets the admin mark a "credito" delivery as paid (or undo it). */
+export const setPayment = mutation({
+  args: { id: v.id("deliveries"), payment: paymentType },
+  handler: async (ctx, { id, payment }) => {
+    await requireAdmin(ctx);
+    const delivery = await ctx.db.get(id);
+    if (!delivery) throw new ConvexError("La entrega ya no existe.");
+    if (delivery.payment === payment) return;
+    await ctx.db.patch(id, {
+      payment,
+      paidAt: payment === "pagado" ? Date.now() : undefined,
+    });
+  },
+});
+
 /**
  * Run once right after deploying offline mode, so older deliveries show up in
  * the date-filtered lists: `npx convex run deliveries:backfillDeliveredAt`
@@ -245,13 +261,29 @@ export const get = query({
       invoicePhotoId: _invoicePhotoId,
       receiverPhotoId: _receiverPhotoId,
       goodsPhotoId: _goodsPhotoId,
+      reminded,
       ...rest
     } = delivery;
+
+    // Payment deadline and reminders are for the office only.
+    const isAdmin = role === "admin";
+    let dueDate: string | null = null;
+    if (isAdmin && delivery.payment === "credito") {
+      const client = await ctx.db.get(delivery.clientId);
+      if (client?.creditDays) {
+        dueDate = dueDateFor(deliveredAt(delivery), client.creditDays);
+      }
+    }
+
     return {
       ...rest,
       deliveredAt: deliveredAt(delivery),
       vehicleName: delivery.vehicleName ?? null,
       payment: delivery.payment ?? null,
+      paidAt: delivery.paidAt ?? null,
+      isAdmin,
+      dueDate,
+      reminded: isAdmin ? (reminded ?? []) : [],
       locationSource: delivery.locationSource ?? null,
       driverPosition: delivery.driverPosition ?? null,
       invoices: await Promise.all(
