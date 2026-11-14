@@ -12,6 +12,8 @@ import {
 import { requireAdmin } from "./lib/access";
 import { formatIsoLong, isIsoDate, isoDate, shiftDays } from "./lib/dates";
 import { deliveredRange, dueDateFor, reminderDue, WEEK } from "./lib/due";
+import { EMAIL_LOGO_HEIGHT, EMAIL_LOGO_PATH, EMAIL_LOGO_WIDTH } from "./lib/emailLogo";
+import { reminderEmailHtml } from "./lib/reminderEmail";
 import { reminderChannel, reminderKind } from "./schema";
 
 // Payment reminders for "credito" deliveries: one a week before the payment
@@ -159,16 +161,13 @@ function messageText(batch: Batch) {
   return { date, intro, subject };
 }
 
-const escapeHtml = (text: string) =>
-  text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
 async function sendEmail(batch: Batch) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.REMINDER_FROM_EMAIL;
   if (!apiKey || !from) {
     throw new Error("Falta configurar RESEND_API_KEY y REMINDER_FROM_EMAIL en Convex.");
   }
-  const { intro, subject } = messageText(batch);
+  const { date, intro, subject } = messageText(batch);
   const closing = "Si ya realizó el pago, por favor haga caso omiso de este mensaje.";
   const text = [
     `Estimado cliente ${batch.clientName}:`,
@@ -181,13 +180,20 @@ async function sendEmail(batch: Batch) {
     "Gracias,",
     COMPANY,
   ].join("\n");
-  const html = [
-    `<p>Estimado cliente ${escapeHtml(batch.clientName)}:</p>`,
-    `<p>${escapeHtml(intro)}</p>`,
-    `<ul>${batch.invoiceNumbers.map((n) => `<li>Factura ${escapeHtml(n)}</li>`).join("")}</ul>`,
-    `<p>${closing}</p>`,
-    `<p>Gracias,<br>${COMPANY}</p>`,
-  ].join("");
+  const html = reminderEmailHtml({
+    company: COMPANY,
+    // CONVEX_SITE_URL is this deployment's public URL, where convex/http.ts serves the logo.
+    logo: {
+      url: `${process.env.CONVEX_SITE_URL}${EMAIL_LOGO_PATH}`,
+      width: EMAIL_LOGO_WIDTH,
+      height: EMAIL_LOGO_HEIGHT,
+    },
+    clientName: batch.clientName,
+    intro,
+    date,
+    invoiceNumbers: batch.invoiceNumbers,
+    closing,
+  });
 
   const replyTo = process.env.REMINDER_REPLY_TO;
   const response = await fetch("https://api.resend.com/emails", {

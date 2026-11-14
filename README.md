@@ -194,6 +194,8 @@ Repite las variables con `--prod` para producción. Prueba cada cliente con **En
 convex/            Backend: esquema, funciones y reglas de acceso
   lib/access.ts    Roles a partir de ADMIN_EMAILS / ALLOWED_EMAILS
   reminders.ts     Recordatorios de pago (correo y WhatsApp)
+  lib/reminderEmail.ts  Diseño (HTML) del correo de recordatorio
+  lib/emailLogo.ts      Logo del correo, servido en /email/logo.jpg (http.ts)
   crons.ts         Tarea diaria que los envía
   lib/due.ts       Fecha límite de pago y qué aviso toca cada día
 src/
