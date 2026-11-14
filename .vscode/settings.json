@@ -1,0 +1,5 @@
+{
+  // Live Server sirve la carpeta site/ como raíz, igual que Netlify en producción:
+  // la portada queda en http://127.0.0.1:5500/ y no en /site/.
+  "liveServer.settings.root": "/site"
+}

@@ -1,0 +1,14 @@
+# Sitio público de biocleancozumel.com: HTML y CSS estáticos, sin build.
+#
+# Es un segundo sitio de Netlify, aparte del de la app de entregas. Al crearlo,
+# elige este mismo repositorio y pon "Base directory" = site; con eso Netlify
+# usa este archivo en lugar del netlify.toml de la raíz.
+[build]
+  publish = "."
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

@@ -1,0 +1,241 @@
+/* Sitio público de biocleancozumel.com. Colores tomados del logotipo. */
+:root {
+  --brand: #2e3192;
+  --brand-hover: #3d41ad;
+  --accent: #8cc04b;
+  --bg: #f3f4f7;
+  --surface: #ffffff;
+  --border: #e2e4ea;
+  --text: #1d2030;
+  --muted: #5c6070;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  flex: 1;
+}
+
+.wrap {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+a {
+  color: var(--brand);
+}
+
+/* Encabezado */
+.top {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.brand a {
+  display: block;
+}
+
+.brand img {
+  display: block;
+  width: auto;
+  height: 56px;
+}
+
+/* Portada: el logotipo tiene fondo blanco, así que la portada también. */
+.hero {
+  background: var(--surface);
+  border-bottom: 4px solid var(--accent);
+  padding: 40px 0 56px;
+}
+
+.hero-logo {
+  display: block;
+  width: min(190px, 55%);
+  height: auto;
+  margin: 0 0 16px -10px;
+}
+
+.hero h1 {
+  margin: 0 0 12px;
+  font-size: clamp(2rem, 6vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  color: var(--brand);
+}
+
+.lead {
+  margin: 0 0 28px;
+  max-width: 34em;
+  font-size: 1.15rem;
+  color: var(--muted);
+}
+
+.button {
+  display: inline-block;
+  padding: 12px 22px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #ffffff;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.button:hover {
+  background: var(--brand-hover);
+}
+
+.section .button {
+  margin-top: 18px;
+}
+
+.button-note {
+  margin-left: 8px;
+  font-size: 0.85em;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* Secciones */
+.section {
+  padding-top: 44px;
+}
+
+.section:last-child {
+  padding-bottom: 56px;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+  color: var(--brand);
+}
+
+.section p {
+  margin: 0;
+  max-width: 38em;
+}
+
+/* Datos de contacto */
+.details {
+  margin: 14px 0 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.details > div {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 12px;
+  padding: 14px 18px;
+}
+
+.details > div + div {
+  border-top: 1px solid var(--border);
+}
+
+.details dt {
+  color: var(--muted);
+}
+
+.details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+address {
+  font-style: normal;
+}
+
+/* Pie */
+.foot {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.foot-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 20px;
+  padding-top: 18px;
+  padding-bottom: 18px;
+}
+
+/* Página de texto (aviso de privacidad) */
+.doc {
+  padding-top: 40px;
+  padding-bottom: 56px;
+}
+
+.doc h1 {
+  margin: 0 0 6px;
+  font-size: 1.8rem;
+  letter-spacing: -0.02em;
+  color: var(--brand);
+}
+
+.doc h2 {
+  margin-top: 30px;
+  font-size: 1.15rem;
+}
+
+.doc p,
+.doc ul {
+  margin: 0 0 12px;
+  max-width: 40em;
+}
+
+.doc ul {
+  padding-left: 22px;
+}
+
+.updated {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 520px) {
+  .hero {
+    padding: 28px 0 44px;
+  }
+
+  .details > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
