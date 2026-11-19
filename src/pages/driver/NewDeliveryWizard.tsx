@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import type { Id } from "../../../convex/_generated/dataModel";
 import { cleanInvoice, cleanName, normalizeKey } from "../../../convex/lib/text";
 import { ClientCombobox } from "../../components/ClientCombobox";
 import { CloseIcon } from "../../components/Icons";
@@ -141,10 +142,24 @@ export function NewDeliveryWizard({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Set when the driver tapped "Registrar entrega" on a stop of their route.
+  const routeClient = (
+    useLocation().state as { client?: { clientId: Id<"clients">; clientName: string } } | null
+  )?.client;
+
   useEffect(() => {
-    void loadDraft(me._id).then(
-      (saved) => setDraft(saved ?? emptyDraft(readCache<Vehicle>(lastVehicleKey(me._id)))),
-    );
+    void loadDraft(me._id).then((saved) => {
+      const fresh = emptyDraft(readCache<Vehicle>(lastVehicleKey(me._id)));
+      // From a route stop the client is already chosen, so it starts at the
+      // next step. An unfinished delivery still wins: the home screen asks
+      // before discarding one for another client.
+      if (routeClient && !(saved && draftHasContent(saved))) {
+        setDraft({ ...fresh, ...routeClient, step: STEPS.findIndex((s) => s.key === "vehicle") });
+      } else {
+        setDraft(saved ?? fresh);
+      }
+    });
+    // `routeClient` only matters when the wizard opens.
   }, [me._id]);
 
   useEffect(() => {

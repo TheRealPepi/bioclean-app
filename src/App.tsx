@@ -1,9 +1,9 @@
 import { useAuthToken } from "@convex-dev/auth/react";
 import { useConvexAuth, useQuery } from "convex/react";
-import { useEffect, useMemo } from "react";
+import { lazy, Suspense, useEffect, useMemo } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { api } from "../convex/_generated/api";
-import { FullScreenSpinner } from "./components/Spinner";
+import { CenteredSpinner, FullScreenSpinner } from "./components/Spinner";
 import type { Me } from "./lib/me";
 import { clearCache, readCache, writeCache } from "./lib/offlineCache";
 import { OutboxProvider } from "./lib/OutboxProvider";
@@ -13,6 +13,7 @@ import { AdminLayout } from "./pages/admin/AdminLayout";
 import { ClientsPage } from "./pages/admin/ClientsPage";
 import { DeliveriesPage } from "./pages/admin/DeliveriesPage";
 import { DriversPage } from "./pages/admin/DriversPage";
+import { RoutesPage } from "./pages/admin/RoutesPage";
 import { VehiclesPage } from "./pages/admin/VehiclesPage";
 import { DeliveryPage } from "./pages/DeliveryPage";
 import { DriverHomePage } from "./pages/driver/DriverHomePage";
@@ -20,6 +21,11 @@ import { DriverLayout } from "./pages/driver/DriverLayout";
 import { NewDeliveryWizard } from "./pages/driver/NewDeliveryWizard";
 import { LoginPage } from "./pages/login/LoginPage";
 import { NoAccessPage } from "./pages/login/NoAccessPage";
+
+// Loaded on demand: it brings the map library, which drivers never need.
+const RouteBuilderPage = lazy(() =>
+  import("./pages/admin/RouteBuilderPage").then((m) => ({ default: m.RouteBuilderPage })),
+);
 
 /** The user id inside a Convex Auth JWT (`sub` is "userId|sessionId"). */
 function tokenUserId(token: string): string | null {
@@ -67,6 +73,18 @@ export default function App() {
         <Route element={<AdminLayout me={me} />}>
           <Route path="entregas" element={<DeliveriesPage />} />
           <Route path="entregas/:id" element={<DeliveryPage />} />
+          <Route path="rutas" element={<RoutesPage />} />
+          {["rutas/nueva", "rutas/:routeId/editar"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <Suspense fallback={<CenteredSpinner />}>
+                  <RouteBuilderPage />
+                </Suspense>
+              }
+            />
+          ))}
           <Route path="choferes" element={<DriversPage />} />
           <Route path="clientes" element={<ClientsPage />} />
           <Route path="vehiculos" element={<VehiclesPage />} />

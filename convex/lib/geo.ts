@@ -5,6 +5,9 @@ export type Point = { lat: number; lng: number };
 /** Closer than this, a GPS point counts as the client's saved location. */
 export const SAME_PLACE_METERS = 75;
 
+export const isValidPoint = (p: Point) =>
+  Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
+
 /** Great-circle distance in meters. */
 export function distanceMeters(a: Point, b: Point): number {
   const R = 6_371_000;

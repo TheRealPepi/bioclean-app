@@ -183,6 +183,19 @@ export const merge = mutation({
     for (const reminder of reminders) {
       await ctx.db.patch(reminder._id, { clientId: intoId });
     }
+    // Routes keep the stop where it was, now for the surviving client (or drop
+    // it if that client was already a stop).
+    for (const route of await ctx.db.query("routes").collect()) {
+      if (!route.stops.some((s) => s.clientId === fromId)) continue;
+      const hasInto = route.stops.some((s) => s.clientId === intoId);
+      await ctx.db.patch(route._id, {
+        stops: hasInto
+          ? route.stops.filter((s) => s.clientId !== fromId)
+          : route.stops.map((s) =>
+              s.clientId === fromId ? { ...s, clientId: intoId, clientName: into.name } : s,
+            ),
+      });
+    }
     await ctx.db.delete(fromId);
   },
 });

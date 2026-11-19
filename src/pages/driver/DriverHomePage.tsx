@@ -10,11 +10,14 @@ import { clearDraft, draftHasContent, loadDraft, type Draft } from "../../lib/dr
 import type { Me } from "../../lib/me";
 import { invoiceLabel, type OutboxItem } from "../../lib/outbox";
 import { useOutbox } from "../../lib/OutboxProvider";
+import type { DriverRoute } from "../../lib/routes";
 import { useCachedQuery } from "../../lib/useCachedQuery";
 import type { ClientListState } from "../../lib/useClientList";
+import { useNow } from "../../lib/useNow";
 import { useOnline } from "../../lib/useOnline";
 import type { Vehicle } from "../../lib/useVehicleList";
 import styles from "./DriverHomePage.module.css";
+import { RouteCard } from "./RouteCard";
 
 type SavedToast = { saved: string; queued?: boolean };
 
@@ -57,6 +60,29 @@ export function DriverHomePage({
   const waiting = outbox.items;
   const hasFailed = waiting.some((i) => i.error);
 
+  // Routes the office planned for this driver. Kept on the phone, and hidden
+  // here once they expire (the server can't watch the clock).
+  const now = useNow();
+  const routes = useCachedQuery(api.routes.listMine, {}, `routes:${me._id}`);
+  const activeRoutes = (routes ?? []).filter((r) => r.expiresAt > now);
+
+  async function registerStop(stop: DriverRoute["stops"][number]) {
+    if (draft && draft.clientId !== stop.clientId) {
+      const unfinished = draft.clientName ? ` de ${draft.clientName}` : "";
+      if (
+        !confirm(
+          `Tienes una entrega sin terminar${unfinished}. ¿Descartarla y registrar la de ${stop.clientName}?`,
+        )
+      ) {
+        return;
+      }
+      await clearDraft(me._id);
+    }
+    navigate("/nueva", {
+      state: { client: { clientId: stop.clientId, clientName: stop.clientName } },
+    });
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.greeting}>
@@ -92,6 +118,15 @@ export function DriverHomePage({
           </div>
         </div>
       )}
+
+      {activeRoutes.map((route) => (
+        <RouteCard
+          key={route._id}
+          route={route}
+          waiting={waiting}
+          onRegister={(stop) => void registerStop(stop)}
+        />
+      ))}
 
       {waiting.length > 0 && (
         <>

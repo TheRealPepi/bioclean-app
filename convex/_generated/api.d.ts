@@ -18,8 +18,11 @@ import type * as lib_dates from "../lib/dates.js";
 import type * as lib_due from "../lib/due.js";
 import type * as lib_geo from "../lib/geo.js";
 import type * as lib_reminderEmail from "../lib/reminderEmail.js";
+import type * as lib_routes from "../lib/routes.js";
 import type * as lib_text from "../lib/text.js";
 import type * as reminders from "../reminders.js";
+import type * as routes from "../routes.js";
+import type * as settings from "../settings.js";
 import type * as users from "../users.js";
 import type * as vehicles from "../vehicles.js";
 
@@ -40,8 +43,11 @@ declare const fullApi: ApiFromModules<{
   "lib/due": typeof lib_due;
   "lib/geo": typeof lib_geo;
   "lib/reminderEmail": typeof lib_reminderEmail;
+  "lib/routes": typeof lib_routes;
   "lib/text": typeof lib_text;
   reminders: typeof reminders;
+  routes: typeof routes;
+  settings: typeof settings;
   users: typeof users;
   vehicles: typeof vehicles;
 }>;

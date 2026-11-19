@@ -59,8 +59,40 @@ export const locationObj = v.object({
   accuracy: v.optional(v.number()),
 });
 
+/** One stop of a route. Name and location are copied from the client when the route is created. */
+export const routeStop = v.object({
+  clientId: v.id("clients"),
+  clientName: v.string(),
+  location: locationObj,
+  // The office chose this location for this route: it isn't the client's saved one.
+  customLocation: v.optional(v.boolean()),
+});
+
 export default defineSchema({
   ...authTables,
+
+  // A single row with what the office configures for the whole app.
+  settings: defineTable({
+    // Where routes start (the warehouse).
+    base: v.optional(locationObj),
+  }),
+
+  // A route the office planned for one driver. Whether a stop is delivered is
+  // not stored: it's worked out from the deliveries made after the route was
+  // created (see `convex/routes.ts`).
+  routes: defineTable({
+    driverId: v.id("users"),
+    driverName: v.string(),
+    // In visit order.
+    stops: v.array(routeStop),
+    // The base when the route was created.
+    base: v.optional(locationObj),
+    returnToBase: v.boolean(),
+    // Drivers stop seeing the route after this; a daily job deletes it later.
+    expiresAt: v.number(),
+  })
+    .index("by_driver", ["driverId", "expiresAt"])
+    .index("by_expires", ["expiresAt"]),
 
   clients: defineTable({
     // Display name, uppercased and whitespace-collapsed.

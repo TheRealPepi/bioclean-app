@@ -11,4 +11,12 @@ crons.daily(
   {},
 );
 
+// 08:00 UTC = 3:00 a.m. in Cozumel.
+crons.daily(
+  "borrar rutas vencidas",
+  { hourUTC: 8, minuteUTC: 0 },
+  internal.routes.purgeExpired,
+  {},
+);
+
 export default crons;

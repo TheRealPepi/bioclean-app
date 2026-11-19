@@ -1,0 +1,73 @@
+.root {
+  position: relative;
+}
+
+.searching {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  pointer-events: none;
+}
+
+/* Hides the browser's own "clear" cross, which would sit under the spinner. */
+.root input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  /* Over the map below. */
+  z-index: 20;
+  max-height: 320px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.active {
+  background: var(--green-50);
+}
+
+.option svg {
+  flex-shrink: 0;
+  color: var(--green-800);
+}
+
+.option span {
+  display: grid;
+  min-width: 0;
+}
+
+.option small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.note {
+  padding: 14px 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
