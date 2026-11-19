@@ -45,6 +45,14 @@ export const reminderKind = v.union(
   v.literal("prueba"),
 );
 
+/**
+ * Set on a factura whose number was already in an earlier delivery:
+ * - seguimiento: the driver confirmed it follows up that delivery.
+ * - posible_duplicado: nobody confirmed it (registered without signal, or two
+ *   drivers registered it at the same time), so the office should check it.
+ */
+export const invoiceRepeat = v.union(v.literal("seguimiento"), v.literal("posible_duplicado"));
+
 export const locationObj = v.object({
   lat: v.number(),
   lng: v.number(),
@@ -91,7 +99,17 @@ export default defineSchema({
     clientName: v.string(),
     // Every factura number joined with ", " (used for display and search).
     invoiceNumber: v.string(),
-    invoices: v.optional(v.array(v.object({ number: v.string(), photoId: v.id("_storage") }))),
+    invoices: v.optional(
+      v.array(
+        v.object({
+          number: v.string(),
+          photoId: v.id("_storage"),
+          repeat: v.optional(invoiceRepeat),
+          // The latest earlier delivery with the same number, if there was one.
+          previousDeliveryId: v.optional(v.id("deliveries")),
+        }),
+      ),
+    ),
     // Only deliveries from before several facturas were allowed.
     invoicePhotoId: v.optional(v.id("_storage")),
     receiverPhotoId: v.id("_storage"),

@@ -1,6 +1,4 @@
-import { useQuery } from "convex/react";
 import { useEffect, useState, type ReactNode } from "react";
-import { api } from "../../../convex/_generated/api";
 import { distanceMeters, SAME_PLACE_METERS } from "../../../convex/lib/geo";
 import { cleanInvoice } from "../../../convex/lib/text";
 import { AlertIcon, CheckIcon, PinIcon, PlusIcon } from "../../components/Icons";
@@ -11,9 +9,9 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { formatShort } from "../../lib/dates";
 import type { Draft, DraftInvoice, LatLng } from "../../lib/draft";
 import { osmEmbedUrl } from "../../lib/maps";
-import { itemInvoices } from "../../lib/outbox";
-import { useOutbox } from "../../lib/OutboxProvider";
 import { LOCATION_SOURCE_LABEL } from "../../lib/payment";
+import { STATUS_META } from "../../lib/status";
+import { needsFollowUpAnswer, type EarlierDelivery } from "../../lib/useEarlierDeliveries";
 import { useObjectUrl } from "../../lib/useObjectUrl";
 import { useOnline } from "../../lib/useOnline";
 import type { Vehicle } from "../../lib/useVehicleList";
@@ -79,36 +77,102 @@ export function VehicleStep({
 
 // ---------------------------------------------------------------- Facturas
 
-/** Warns (doesn't block) when a factura number was already registered. */
-function InvoiceDuplicateWarning({ number }: { number: string }) {
-  const invoice = cleanInvoice(number);
-  const onServer = useQuery(
-    api.deliveries.findByInvoice,
-    invoice ? { invoiceNumber: invoice } : "skip",
-  );
-  // Also deliveries saved on this phone and not uploaded yet (no signal).
-  const waiting = useOutbox()?.items.find(
-    (item) => invoice && itemInvoices(item).some((i) => cleanInvoice(i.number) === invoice),
-  );
-  const existing =
-    onServer ?? (waiting && { clientName: waiting.clientName, createdAt: waiting.deliveredAt });
-  if (!existing) return null;
+/**
+ * A factura number that's already in another delivery. If that delivery was
+ * for the same client, asks whether this one follows it up; "No" blocks the
+ * step, since it would duplicate it. For another client it always blocks.
+ */
+function RepeatedInvoice({
+  earlier,
+  followUp,
+  onAnswer,
+}: {
+  earlier: EarlierDelivery | null;
+  followUp: boolean | undefined;
+  onAnswer: (followUp: boolean | undefined) => void;
+}) {
+  if (earlier && !earlier.sameClient) {
+    const details = [earlier.driverName, STATUS_META[earlier.status].label].filter(Boolean);
+    return (
+      <div className={styles.blocked}>
+        <p>
+          <AlertIcon size={18} />
+          <span>
+            No puedes continuar: esta factura ya se registró el {formatShort(earlier.createdAt)}{" "}
+            para otro cliente, <strong>{earlier.clientName}</strong> ({details.join(" · ")}). Solo
+            se puede dar seguimiento a una entrega del mismo cliente. Corrige el número de factura
+            o el cliente.
+          </span>
+        </p>
+      </div>
+    );
+  }
+  if (followUp === false) {
+    return (
+      <div className={styles.blocked}>
+        <p>
+          <AlertIcon size={18} />
+          <span>
+            No puedes continuar: esta factura ya tiene una entrega registrada y estarías
+            duplicándola. Corrige el número o quita la factura.
+          </span>
+        </p>
+        <button type="button" className={styles.linkButton} onClick={() => onAnswer(undefined)}>
+          Cambiar respuesta
+        </button>
+      </div>
+    );
+  }
+  if (!earlier) return null;
+
+  const when = formatShort(earlier.createdAt);
+  if (followUp) {
+    return (
+      <div className={styles.followUp}>
+        <p>
+          <CheckIcon size={18} />
+          <span>
+            Seguimiento de la entrega del {when} para <strong>{earlier.clientName}</strong>.
+          </span>
+        </p>
+        <button type="button" className={styles.linkButton} onClick={() => onAnswer(undefined)}>
+          Cambiar
+        </button>
+      </div>
+    );
+  }
+
+  const details = [earlier.driverName, STATUS_META[earlier.status].label].filter(Boolean);
   return (
-    <p className={styles.warning}>
-      <AlertIcon size={18} />
-      <span>
-        Esta factura ya se registró el {formatShort(existing.createdAt)} para{" "}
-        <strong>{existing.clientName}</strong>. Revisa que el número sea correcto.
-      </span>
-    </p>
+    <div className={styles.question}>
+      <p>
+        <AlertIcon size={18} />
+        <span>
+          Posible duplicado: esta factura ya se registró el {when} para{" "}
+          <strong>{earlier.clientName}</strong> ({details.join(" · ")}).{" "}
+          <strong>¿Estás dando seguimiento a esa entrega?</strong>
+        </span>
+      </p>
+      <div className={styles.answers}>
+        <button type="button" className="btn btn-primary btn-lg" onClick={() => onAnswer(true)}>
+          Sí, es seguimiento
+        </button>
+        <button type="button" className="btn btn-ghost btn-lg" onClick={() => onAnswer(false)}>
+          No
+        </button>
+      </div>
+    </div>
   );
 }
 
 export function InvoicesStep({
   value,
+  earlier,
   onChange,
 }: {
   value: DraftInvoice[];
+  /** For each factura, the delivery that already has its number (see `useEarlierDeliveries`). */
+  earlier: (EarlierDelivery | null)[];
   onChange: (invoices: DraftInvoice[]) => void;
 }) {
   const update = (index: number, changes: Partial<DraftInvoice>) =>
@@ -139,7 +203,15 @@ export function InvoicesStep({
             <input
               className={`input ${styles.bigInput}`}
               value={invoice.number}
-              onChange={(e) => update(index, { number: e.target.value })}
+              onChange={(e) =>
+                update(
+                  index,
+                  // The answer was about the previous number.
+                  cleanInvoice(e.target.value) === number
+                    ? { number: e.target.value }
+                    : { number: e.target.value, followUp: undefined },
+                )
+              }
               placeholder="Número, ej. B-10237"
               aria-label={`Número de la factura ${index + 1}`}
               autoCapitalize="characters"
@@ -150,7 +222,11 @@ export function InvoicesStep({
             {repeated ? (
               <p className="error-text">Este número ya está en otra factura de esta entrega.</p>
             ) : (
-              <InvoiceDuplicateWarning number={invoice.number} />
+              <RepeatedInvoice
+                earlier={earlier[index] ?? null}
+                followUp={invoice.followUp}
+                onAnswer={(followUp) => update(index, { followUp })}
+              />
             )}
             <PhotoCapture
               compact
@@ -417,61 +493,88 @@ function ReviewRow({
 
 export function ReviewStep({
   draft,
+  earlier,
   showVehicle,
   onEdit,
 }: {
   draft: Draft;
+  earlier: (EarlierDelivery | null)[];
   showVehicle: boolean;
   onEdit: (key: StepKey) => void;
 }) {
+  // E.g. another driver registered one of the facturas after that step.
+  const unanswered = draft.invoices.some((invoice, i) =>
+    needsFollowUpAnswer(invoice, earlier[i] ?? null),
+  );
+  const followUps = draft.invoices.filter((i) => i.followUp).map((i) => cleanInvoice(i.number));
+
   return (
-    <div className={`card ${styles.review}`}>
-      <ReviewRow label="Cliente" onEdit={() => onEdit("client")}>
-        <strong>{draft.clientName}</strong>
-        {!draft.clientId && <span className={styles.newTag}>Nuevo</span>}
-      </ReviewRow>
-      {showVehicle && (
-        <ReviewRow label="Vehículo" onEdit={() => onEdit("vehicle")}>
-          {draft.vehicleName ?? "Sin vehículo"}
-        </ReviewRow>
-      )}
-      <ReviewRow
-        label={draft.invoices.length === 1 ? "Factura" : `Facturas (${draft.invoices.length})`}
-        onEdit={() => onEdit("invoices")}
-      >
-        <div className={styles.thumbs}>
-          {draft.invoices.map((invoice, i) => (
-            <Thumb key={i} blob={invoice.photo} label={cleanInvoice(invoice.number)} />
-          ))}
-        </div>
-      </ReviewRow>
-      <ReviewRow label="Fotos" onEdit={() => onEdit("receiverPhoto")}>
-        <div className={styles.thumbs}>
-          <Thumb blob={draft.photos.receiver} label="Quien recibe" />
-          <Thumb blob={draft.photos.goods} label="Mercancía" />
-        </div>
-      </ReviewRow>
-      <ReviewRow label="Ubicación" onEdit={() => onEdit("location")}>
-        {draft.location ? (
-          <div className={styles.reviewStacked}>
-            {draft.locationSource && <span>{LOCATION_SOURCE_LABEL[draft.locationSource]}</span>}
-            <span className={styles.muted}>
-              {draft.location.lat.toFixed(5)}, {draft.location.lng.toFixed(5)}
+    <div className={styles.stack}>
+      {unanswered && (
+        <div className={styles.question}>
+          <p>
+            <AlertIcon size={18} />
+            <span>
+              Posible duplicado: una de las facturas ya tiene una entrega registrada. Revísala
+              para poder guardar.
             </span>
-          </div>
-        ) : (
-          "—"
+          </p>
+          <button type="button" className="btn btn-primary btn-lg" onClick={() => onEdit("invoices")}>
+            Ir a Facturas
+          </button>
+        </div>
+      )}
+      <div className={`card ${styles.review}`}>
+        <ReviewRow label="Cliente" onEdit={() => onEdit("client")}>
+          <strong>{draft.clientName}</strong>
+          {!draft.clientId && <span className={styles.newTag}>Nuevo</span>}
+        </ReviewRow>
+        {showVehicle && (
+          <ReviewRow label="Vehículo" onEdit={() => onEdit("vehicle")}>
+            {draft.vehicleName ?? "Sin vehículo"}
+          </ReviewRow>
         )}
-      </ReviewRow>
-      <ReviewRow label="Estatus" onEdit={() => onEdit("status")}>
-        {draft.status ? <StatusBadge status={draft.status} /> : "—"}
-      </ReviewRow>
-      <ReviewRow label="Pago" onEdit={() => onEdit("payment")}>
-        {draft.payment ? <PaymentBadge payment={draft.payment} /> : "—"}
-      </ReviewRow>
-      <ReviewRow label="Anotaciones" onEdit={() => onEdit("notes")}>
-        <span className={styles.notes}>{draft.notes.trim() || "Sin anotaciones"}</span>
-      </ReviewRow>
+        <ReviewRow
+          label={draft.invoices.length === 1 ? "Factura" : `Facturas (${draft.invoices.length})`}
+          onEdit={() => onEdit("invoices")}
+        >
+          <div className={styles.thumbs}>
+            {draft.invoices.map((invoice, i) => (
+              <Thumb key={i} blob={invoice.photo} label={cleanInvoice(invoice.number)} />
+            ))}
+          </div>
+          {followUps.length > 0 && (
+            <span className={styles.muted}>Seguimiento: {followUps.join(", ")}</span>
+          )}
+        </ReviewRow>
+        <ReviewRow label="Fotos" onEdit={() => onEdit("receiverPhoto")}>
+          <div className={styles.thumbs}>
+            <Thumb blob={draft.photos.receiver} label="Quien recibe" />
+            <Thumb blob={draft.photos.goods} label="Mercancía" />
+          </div>
+        </ReviewRow>
+        <ReviewRow label="Ubicación" onEdit={() => onEdit("location")}>
+          {draft.location ? (
+            <div className={styles.reviewStacked}>
+              {draft.locationSource && <span>{LOCATION_SOURCE_LABEL[draft.locationSource]}</span>}
+              <span className={styles.muted}>
+                {draft.location.lat.toFixed(5)}, {draft.location.lng.toFixed(5)}
+              </span>
+            </div>
+          ) : (
+            "—"
+          )}
+        </ReviewRow>
+        <ReviewRow label="Estatus" onEdit={() => onEdit("status")}>
+          {draft.status ? <StatusBadge status={draft.status} /> : "—"}
+        </ReviewRow>
+        <ReviewRow label="Pago" onEdit={() => onEdit("payment")}>
+          {draft.payment ? <PaymentBadge payment={draft.payment} /> : "—"}
+        </ReviewRow>
+        <ReviewRow label="Anotaciones" onEdit={() => onEdit("notes")}>
+          <span className={styles.notes}>{draft.notes.trim() || "Sin anotaciones"}</span>
+        </ReviewRow>
+      </div>
     </div>
   );
 }

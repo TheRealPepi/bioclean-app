@@ -265,6 +265,25 @@
   font-weight: 600;
 }
 
+.repeatNote {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.repeatWarn {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.repeatNote a {
+  color: inherit;
+  text-decoration: underline;
+}
+
 .sourceChanged {
   background: var(--warning-bg);
   color: var(--warning);

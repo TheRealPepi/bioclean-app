@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, type QueryCtx } from "./_generated/server";
 import { findOrCreateClient } from "./clients";
 import { displayName, requireAdmin, requireUser } from "./lib/access";
 import { dueDateFor } from "./lib/due";
@@ -19,7 +19,42 @@ export const generateUploadUrl = mutation({
   },
 });
 
-const invoiceArg = v.object({ number: v.string(), photoId: v.id("_storage") });
+/** The latest deliveries that have this (already cleaned) factura number, newest first. */
+async function deliveriesWithInvoice(ctx: QueryCtx, number: string) {
+  const found = new Map<Id<"deliveries">, Doc<"deliveries">>();
+  const rows = await ctx.db
+    .query("invoiceNumbers")
+    .withIndex("by_number", (q) => q.eq("number", number))
+    .order("desc")
+    .take(20);
+  for (const row of rows) {
+    const delivery = await ctx.db.get(row.deliveryId);
+    if (delivery) found.set(delivery._id, delivery);
+  }
+  // Deliveries from before several facturas were allowed have no rows there.
+  const older = await ctx.db
+    .query("deliveries")
+    .withIndex("by_invoice", (q) => q.eq("invoiceNumber", number))
+    .order("desc")
+    .take(20);
+  for (const delivery of older) found.set(delivery._id, delivery);
+  return [...found.values()].sort((a, b) => b._creationTime - a._creationTime);
+}
+
+/** "posible_duplicado" wins: it's the one the office has to look at. */
+function deliveryRepeat(d: Doc<"deliveries">) {
+  const repeats = (d.invoices ?? []).map((i) => i.repeat);
+  if (repeats.includes("posible_duplicado")) return "posible_duplicado" as const;
+  if (repeats.includes("seguimiento")) return "seguimiento" as const;
+  return null;
+}
+
+const invoiceArg = v.object({
+  number: v.string(),
+  photoId: v.id("_storage"),
+  // The driver confirmed this factura follows up an earlier delivery.
+  followUp: v.optional(v.boolean()),
+});
 
 export const create = mutation({
   args: {
@@ -55,16 +90,16 @@ export const create = mutation({
       if (existing) return existing._id;
     }
 
-    const rawInvoices =
+    const rawInvoices: { number: string; photoId: Id<"_storage">; followUp?: boolean }[] =
       args.invoices ??
       (args.invoiceNumber !== undefined && args.invoicePhotoId
         ? [{ number: args.invoiceNumber, photoId: args.invoicePhotoId }]
         : []);
-    const invoices = rawInvoices.map((i) => ({ ...i, number: cleanInvoice(i.number) }));
-    if (invoices.length === 0 || invoices.some((i) => !i.number)) {
+    const cleaned = rawInvoices.map((i) => ({ ...i, number: cleanInvoice(i.number) }));
+    if (cleaned.length === 0 || cleaned.some((i) => !i.number)) {
       throw new ConvexError("Falta el número de factura.");
     }
-    const numbers = invoices.map((i) => i.number);
+    const numbers = cleaned.map((i) => i.number);
     if (new Set(numbers).size !== numbers.length) {
       throw new ConvexError("Hay un número de factura repetido en esta entrega.");
     }
@@ -74,7 +109,7 @@ export const create = mutation({
       throw new ConvexError("Describe en las anotaciones qué pasó con la entrega.");
     }
 
-    const photoIds = [...invoices.map((i) => i.photoId), args.receiverPhotoId, args.goodsPhotoId];
+    const photoIds = [...cleaned.map((i) => i.photoId), args.receiverPhotoId, args.goodsPhotoId];
     for (const photoId of photoIds) {
       if ((await ctx.db.system.get(photoId)) === null) {
         throw new ConvexError("Una de las fotos no se subió correctamente. Inténtalo de nuevo.");
@@ -83,6 +118,28 @@ export const create = mutation({
 
     const selected = args.clientId ? await ctx.db.get(args.clientId) : null;
     const client = selected ?? (await findOrCreateClient(ctx, args.clientName));
+
+    // A repeated factura is never rejected: the delivery already happened, and
+    // the wizard can't ask without signal. It's marked for the office instead.
+    // Only a delivery to the same client can be followed up; the same number
+    // for another client is always a possible duplicate.
+    const invoices: NonNullable<Doc<"deliveries">["invoices"]> = [];
+    for (const { number, photoId, followUp } of cleaned) {
+      const earlier = await deliveriesWithInvoice(ctx, number);
+      const sameClient = earlier.find((d) => d.clientId === client._id);
+      const previous = sameClient ?? earlier[0];
+      const isFollowUp = followUp === true && (sameClient !== undefined || !previous);
+      invoices.push({
+        number,
+        photoId,
+        ...(isFollowUp
+          ? { repeat: "seguimiento" as const }
+          : previous
+            ? { repeat: "posible_duplicado" as const }
+            : {}),
+        ...(previous ? { previousDeliveryId: previous._id } : {}),
+      });
+    }
 
     // Archived vehicles are accepted: it may have been chosen offline before.
     const vehicle = args.vehicleId ? await ctx.db.get(args.vehicleId) : null;
@@ -171,26 +228,45 @@ export const backfillDeliveredAt = internalMutation({
   },
 });
 
-/** Used by the wizard to warn (not block) when an invoice was already registered. */
+/** Only called by app versions from before the "¿es seguimiento?" question. */
 export const findByInvoice = query({
   args: { invoiceNumber: v.string() },
   handler: async (ctx, args) => {
     await requireUser(ctx);
     const invoiceNumber = cleanInvoice(args.invoiceNumber);
     if (!invoiceNumber) return null;
-    const row = await ctx.db
-      .query("invoiceNumbers")
-      .withIndex("by_number", (q) => q.eq("number", invoiceNumber))
-      .first();
-    // Deliveries from before several facturas were allowed have no rows there.
-    const existing = row
-      ? await ctx.db.get(row.deliveryId)
-      : await ctx.db
-          .query("deliveries")
-          .withIndex("by_invoice", (q) => q.eq("invoiceNumber", invoiceNumber))
-          .first();
+    const [existing] = await deliveriesWithInvoice(ctx, invoiceNumber);
     if (!existing) return null;
     return { clientName: existing.clientName, createdAt: deliveredAt(existing) };
+  },
+});
+
+/**
+ * Used by the wizard to ask whether a factura that was already registered (by
+ * any driver) is a follow-up. One entry per number; `earlier` has the latest
+ * deliveries with it, newest first (empty when the number is new). The wizard
+ * picks the one for the same client, since only that one can be followed up.
+ */
+export const findByInvoices = query({
+  args: { numbers: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
+    const numbers = [...new Set(args.numbers.map(cleanInvoice).filter(Boolean))].slice(0, 50);
+    return await Promise.all(
+      numbers.map(async (number) => {
+        const existing = await deliveriesWithInvoice(ctx, number);
+        return {
+          number,
+          earlier: existing.map((d) => ({
+            clientId: d.clientId,
+            clientName: d.clientName,
+            createdAt: deliveredAt(d),
+            driverName: d.driverName,
+            status: d.status,
+          })),
+        };
+      }),
+    );
   },
 });
 
@@ -229,6 +305,7 @@ export const list = query({
       deliveredAt: deliveredAt(d),
       clientName: d.clientName,
       invoiceNumber: d.invoiceNumber,
+      repeat: deliveryRepeat(d),
       driverId: d.driverId,
       driverName: d.driverName,
       status: d.status,
@@ -251,7 +328,7 @@ export const get = query({
       return null;
     }
     const url = (storageId: Id<"_storage">) => ctx.storage.getUrl(storageId);
-    const invoices =
+    const invoices: NonNullable<Doc<"deliveries">["invoices"]> =
       delivery.invoices ??
       (delivery.invoicePhotoId
         ? [{ number: delivery.invoiceNumber, photoId: delivery.invoicePhotoId }]
@@ -287,7 +364,23 @@ export const get = query({
       locationSource: delivery.locationSource ?? null,
       driverPosition: delivery.driverPosition ?? null,
       invoices: await Promise.all(
-        invoices.map(async (i) => ({ number: i.number, url: await url(i.photoId) })),
+        invoices.map(async (i) => {
+          const previous = i.previousDeliveryId ? await ctx.db.get(i.previousDeliveryId) : null;
+          return {
+            number: i.number,
+            url: await url(i.photoId),
+            repeat: i.repeat ?? null,
+            previous: previous && {
+              // Only when this user can open it (drivers only see their own).
+              id: isAdmin || previous.driverId === user._id ? previous._id : null,
+              deliveredAt: deliveredAt(previous),
+              // Only when it was for another client (never a follow-up then).
+              otherClientName: previous.clientId === delivery.clientId ? null : previous.clientName,
+              driverName: previous.driverName,
+              status: previous.status,
+            },
+          };
+        }),
       ),
       photos: {
         receiver: await url(delivery.receiverPhotoId),

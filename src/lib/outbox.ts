@@ -10,6 +10,8 @@ export type OutboxInvoice = {
   photo: StoredPhoto;
   /** Set once uploaded, so a retry only uploads the missing ones. */
   photoId?: Id<"_storage">;
+  /** The driver confirmed it follows up an earlier delivery of this factura. */
+  followUp?: boolean;
 };
 
 /**
@@ -88,7 +90,11 @@ export async function photoBytes(photo: StoredPhoto): Promise<{ bytes: ArrayBuff
 export async function outboxItemFromDraft(draft: Draft, userId: string): Promise<OutboxItem> {
   const invoices: OutboxInvoice[] = [];
   for (const invoice of draft.invoices) {
-    invoices.push({ number: invoice.number, photo: await photoBytes(invoice.photo!) });
+    invoices.push({
+      number: invoice.number,
+      photo: await photoBytes(invoice.photo!),
+      ...(invoice.followUp ? { followUp: true } : {}),
+    });
   }
   return {
     id: crypto.randomUUID(),

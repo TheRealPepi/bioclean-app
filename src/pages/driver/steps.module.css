@@ -26,6 +26,65 @@
   margin-top: 1px;
 }
 
+/* A factura that's already in another delivery (see RepeatedInvoice). */
+.question,
+.blocked,
+.followUp {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.question {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.blocked {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.followUp {
+  background: var(--green-50);
+  color: var(--green-900);
+}
+
+.question p,
+.blocked p,
+.followUp p {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+.question svg,
+.blocked svg,
+.followUp svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.blocked .linkButton,
+.followUp .linkButton {
+  justify-self: start;
+  padding-left: 0;
+  color: inherit;
+  text-decoration: underline;
+}
+
+.answers {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 8px;
+}
+
+.answers :global(.btn-ghost) {
+  background: var(--surface);
+}
+
 .bigAction {
   display: flex;
   flex-direction: column;

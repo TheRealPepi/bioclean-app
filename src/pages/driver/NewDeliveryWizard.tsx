@@ -21,6 +21,11 @@ import { readCache, writeCache } from "../../lib/offlineCache";
 import { PhotoReadError } from "../../lib/outbox";
 import { useOutbox } from "../../lib/OutboxProvider";
 import type { ClientList } from "../../lib/useClientList";
+import {
+  needsFollowUpAnswer,
+  useEarlierDeliveries,
+  type EarlierDelivery,
+} from "../../lib/useEarlierDeliveries";
 import { useOnline } from "../../lib/useOnline";
 import type { Vehicle } from "../../lib/useVehicleList";
 import { InvoicesStep, LocationStep, ReviewStep, VehicleStep } from "./steps";
@@ -60,17 +65,23 @@ const PHOTO_STEPS: Partial<Record<StepKey, PhotoKey>> = {
   goodsPhoto: "goods",
 };
 
-function invoicesValid(d: Draft): boolean {
+function invoicesValid(d: Draft, earlier: (EarlierDelivery | null)[]): boolean {
   const numbers = d.invoices.map((i) => cleanInvoice(i.number));
   return (
     d.invoices.length > 0 &&
     d.invoices.every((i) => i.photo !== undefined) &&
     numbers.every(Boolean) &&
-    new Set(numbers).size === numbers.length
+    new Set(numbers).size === numbers.length &&
+    d.invoices.every((invoice, i) => !needsFollowUpAnswer(invoice, earlier[i] ?? null))
   );
 }
 
-function isStepValid(key: StepKey, d: Draft, vehicles: Vehicle[] | undefined): boolean {
+function isStepValid(
+  key: StepKey,
+  d: Draft,
+  vehicles: Vehicle[] | undefined,
+  earlier: (EarlierDelivery | null)[],
+): boolean {
   switch (key) {
     case "client":
       return d.clientName.trim() !== "";
@@ -78,7 +89,7 @@ function isStepValid(key: StepKey, d: Draft, vehicles: Vehicle[] | undefined): b
       // Never blocks when there's no list (not downloaded yet, or none added).
       return !vehicles?.length || vehicles.some((v) => v._id === d.vehicleId);
     case "invoices":
-      return invoicesValid(d);
+      return invoicesValid(d, earlier);
     case "receiverPhoto":
     case "goodsPhoto":
       return d.photos[PHOTO_STEPS[key]!] !== undefined;
@@ -91,7 +102,7 @@ function isStepValid(key: StepKey, d: Draft, vehicles: Vehicle[] | undefined): b
     case "notes":
       return d.status === "exitosa" || d.notes.trim() !== "";
     case "review":
-      return STEPS.slice(0, -1).every((s) => isStepValid(s.key, d, vehicles));
+      return STEPS.slice(0, -1).every((s) => isStepValid(s.key, d, vehicles, earlier));
   }
 }
 
@@ -140,12 +151,16 @@ export function NewDeliveryWizard({
     if (draft && draftHasContent(draft)) void saveDraft(me._id, draft);
   }, [draft, me._id]);
 
+  // Looked up on every step, so a factura another driver registers meanwhile
+  // still stops this delivery before it's saved.
+  const earlier = useEarlierDeliveries(draft);
+
   if (!draft) return <FullScreenSpinner />;
 
   const stepIndex = Math.min(draft.step, STEPS.length - 1);
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
-  const valid = isStepValid(step.key, draft, vehicles);
+  const valid = isStepValid(step.key, draft, vehicles, earlier);
   // The client's saved location, from the list saved on the phone.
   const savedLocation =
     (draft.clientId && clients?.find((c) => c._id === draft.clientId)?.location) || null;
@@ -231,6 +246,8 @@ export function NewDeliveryWizard({
               patch({
                 clientId: v.clientId,
                 clientName: v.clientName,
+                // A follow-up is of a delivery to that client: ask again.
+                invoices: draft.invoices.map(({ followUp: _, ...invoice }) => invoice),
                 // The location depends on the client.
                 location: undefined,
                 locationSource: undefined,
@@ -249,7 +266,11 @@ export function NewDeliveryWizard({
         )}
 
         {step.key === "invoices" && (
-          <InvoicesStep value={draft.invoices} onChange={(invoices) => patch({ invoices })} />
+          <InvoicesStep
+            value={draft.invoices}
+            earlier={earlier}
+            onChange={(invoices) => patch({ invoices })}
+          />
         )}
 
         {photoKey && (
@@ -297,6 +318,7 @@ export function NewDeliveryWizard({
         {step.key === "review" && (
           <ReviewStep
             draft={draft}
+            earlier={earlier}
             showVehicle={Boolean(vehicles?.length || draft.vehicleId)}
             onEdit={(key) => goTo(STEPS.findIndex((s) => s.key === key))}
           />

@@ -5,12 +5,14 @@ import { api } from "../../../convex/_generated/api";
 import { normalizeKey } from "../../../convex/lib/text";
 import { DownloadIcon } from "../../components/Icons";
 import { PaymentBadge } from "../../components/PaymentBadge";
+import { RepeatBadge } from "../../components/RepeatBadge";
 import { CenteredSpinner } from "../../components/Spinner";
 import { StatusBadge } from "../../components/StatusBadge";
 import { DAY_MS, formatShort, formatTime, isoDate, startOfDay } from "../../lib/dates";
 import { downloadCsv } from "../../lib/csv";
 import { googleMapsUrl } from "../../lib/maps";
 import { isPayment, LOCATION_SOURCE_SHORT, PAYMENT_META, PAYMENTS } from "../../lib/payment";
+import { REPEAT_META } from "../../lib/repeat";
 import {
   isStatus,
   STATUS_META,
@@ -101,6 +103,7 @@ export function DeliveriesPage() {
         "Anotaciones",
         "Ubicación",
         "Tipo de ubicación",
+        "Factura repetida",
       ],
       rows.map((d) => [
         isoDate(d.deliveredAt),
@@ -114,6 +117,7 @@ export function DeliveriesPage() {
         d.notes,
         googleMapsUrl(d.location),
         d.locationSource ? LOCATION_SOURCE_SHORT[d.locationSource] : "",
+        d.repeat ? REPEAT_META[d.repeat].label : "",
       ]),
     );
   }
@@ -253,7 +257,14 @@ export function DeliveriesPage() {
                 >
                   <td className={styles.date}>{formatShort(d.deliveredAt)}</td>
                   <td className={styles.client}>{d.clientName}</td>
-                  <td className={styles.invoice}>{d.invoiceNumber}</td>
+                  <td className={styles.invoice}>
+                    {d.invoiceNumber}
+                    {d.repeat && (
+                      <span className={styles.repeat}>
+                        <RepeatBadge repeat={d.repeat} />
+                      </span>
+                    )}
+                  </td>
                   <td className={styles.driver}>
                     {d.driverName}
                     {d.vehicleName && <span className={styles.vehicle}>{d.vehicleName}</span>}

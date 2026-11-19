@@ -5,7 +5,16 @@ import type { DeliveryStatus } from "./status";
 
 export type PhotoKey = "receiver" | "goods";
 export type LatLng = { lat: number; lng: number; accuracy?: number };
-export type DraftInvoice = { number: string; photo?: Blob };
+export type DraftInvoice = {
+  number: string;
+  photo?: Blob;
+  /**
+   * The driver's answer when the number was already registered: true = it
+   * follows up that delivery, false = it doesn't (the wizard then blocks).
+   * Cleared when the number changes.
+   */
+  followUp?: boolean;
+};
 
 export type Draft = {
   version: 2;

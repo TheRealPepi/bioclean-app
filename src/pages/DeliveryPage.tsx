@@ -23,6 +23,8 @@ import {
   type ReminderKind,
 } from "../lib/payment";
 import { downloadDeliveryPdf, type DeliveryDetails } from "../lib/pdf";
+import { REPEAT_META } from "../lib/repeat";
+import { STATUS_META } from "../lib/status";
 import styles from "./DeliveryPage.module.css";
 
 export function DeliveryPage() {
@@ -73,6 +75,16 @@ export function DeliveryPage() {
             <span>Chofer: {delivery.driverName}</span>
             {delivery.vehicleName && <span>Vehículo: {delivery.vehicleName}</span>}
           </div>
+          {delivery.invoices.map(
+            (invoice) =>
+              invoice.repeat && (
+                <RepeatNote
+                  key={invoice.number}
+                  invoice={invoice}
+                  from={location.pathname}
+                />
+              ),
+          )}
         </div>
         <div className={styles.heroSide}>
           <div className={styles.badges}>
@@ -154,6 +166,67 @@ export function DeliveryPage() {
 
       {lightbox && <Lightbox {...lightbox} onClose={() => setLightbox(null)} />}
     </div>
+  );
+}
+
+/** A factura that was already in an earlier delivery: a confirmed follow-up or a possible duplicate. */
+function RepeatNote({
+  invoice,
+  from,
+}: {
+  invoice: DeliveryDetails["invoices"][number];
+  from: string;
+}) {
+  const { repeat, previous } = invoice;
+  if (!repeat) return null;
+  const when = previous && (
+    <>
+      {formatDay(previous.deliveredAt)}, {formatTime(previous.deliveredAt)}
+    </>
+  );
+  const earlier =
+    previous &&
+    (previous.id ? (
+      <Link to={`/entregas/${previous.id}`} state={{ from }}>
+        entrega del {when}
+      </Link>
+    ) : (
+      <>entrega del {when}</>
+    ));
+  const details =
+    previous &&
+    ` (${[
+      previous.otherClientName && `otro cliente: ${previous.otherClientName}`,
+      previous.driverName,
+      STATUS_META[previous.status].label,
+    ]
+      .filter(Boolean)
+      .join(" · ")})`;
+
+  return (
+    <p className={`${styles.repeatNote} ${repeat === "posible_duplicado" ? styles.repeatWarn : ""}`}>
+      <strong>
+        Factura {invoice.number} · {REPEAT_META[repeat].label}
+      </strong>
+      {repeat === "seguimiento" ? (
+        earlier ? (
+          <>
+            : seguimiento de la {earlier}
+            {details}.
+          </>
+        ) : (
+          <>: el chofer indicó que es un seguimiento.</>
+        )
+      ) : (
+        <>
+          : ya estaba en {earlier ? <>la {earlier}</> : "otra entrega"}
+          {details}
+          {previous?.otherClientName
+            ? ". Solo puede haber seguimiento con el mismo cliente."
+            : " y no se confirmó como seguimiento."}
+        </>
+      )}
+    </p>
   );
 }
 

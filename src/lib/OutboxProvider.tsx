@@ -144,7 +144,11 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
       await createDelivery({
         clientId: item.clientId,
         clientName: item.clientName,
-        invoices: invoices.map((i) => ({ number: i.number, photoId: i.photoId! })),
+        invoices: invoices.map((i) => ({
+          number: i.number,
+          photoId: i.photoId!,
+          ...(i.followUp ? { followUp: true } : {}),
+        })),
         receiverPhotoId: photoIds.receiver!,
         goodsPhotoId: photoIds.goods!,
         location: item.location,
