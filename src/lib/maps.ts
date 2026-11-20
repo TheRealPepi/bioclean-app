@@ -1,3 +1,5 @@
+import { distanceMeters } from "../../convex/lib/geo";
+
 type Point = { lat: number; lng: number };
 
 const coords = ({ lat, lng }: Point) => `${lat},${lng}`;
@@ -15,8 +17,18 @@ export function googleMapsNavUrl(point: Point): string {
 export const MAPS_STOPS_PER_LINK = 10;
 
 /**
+ * Consecutive stops this close go into the link as one. Google Maps can't route
+ * a leg between two stops at the same spot: the app opens on a "choose a place"
+ * screen with no Start button.
+ */
+const SAME_STOP_METERS = 10;
+
+/**
  * Driving directions through `stops` in order, ending at `end` if given. One
  * link per `MAPS_STOPS_PER_LINK` stops, because Google ignores the rest.
+ *
+ * Stops are split into links before the ones at the same spot are merged, so
+ * the number of links and which stops each one covers don't depend on that.
  *
  * No origin on purpose: Google then starts from where the phone is, which is
  * the only way it offers turn-by-turn navigation instead of a preview.
@@ -25,7 +37,11 @@ export function googleMapsRouteUrls(stops: Point[], end?: Point | null): string[
   const points = end ? [...stops, end] : stops;
   const urls: string[] = [];
   for (let i = 0; i < points.length; i += MAPS_STOPS_PER_LINK) {
-    const leg = points.slice(i, i + MAPS_STOPS_PER_LINK);
+    const leg: Point[] = [];
+    for (const point of points.slice(i, i + MAPS_STOPS_PER_LINK)) {
+      const previous = leg[leg.length - 1];
+      if (!previous || distanceMeters(previous, point) > SAME_STOP_METERS) leg.push(point);
+    }
     const params = new URLSearchParams({
       api: "1",
       destination: coords(leg[leg.length - 1]),
