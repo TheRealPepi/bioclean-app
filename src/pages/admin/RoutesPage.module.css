@@ -322,6 +322,12 @@ textarea.message {
   font-size: 14px;
 }
 
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .check {
   display: flex;
   align-items: center;

@@ -10,6 +10,7 @@ import { AddressSearch, type FoundPlace } from "../../components/AddressSearch";
 import { ChevronDownIcon, ChevronLeftIcon, CloseIcon, PinIcon } from "../../components/Icons";
 import { RouteMap, type MapClient } from "../../components/RouteMap";
 import { CenteredSpinner, Spinner } from "../../components/Spinner";
+import { HelpTip } from "../../components/Tooltip";
 import { formatDay } from "../../lib/dates";
 import { errorMessage } from "../../lib/errors";
 import { googleMapsKey } from "../../lib/googleMaps";
@@ -58,6 +59,7 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
   const create = useMutation(api.routes.create);
   const update = useMutation(api.routes.update);
   const setBase = useMutation(api.settings.setBase);
+  const setClientLocation = useMutation(api.clients.setLocation);
 
   const [driverId, setDriverId] = useState<string>(template?.driverId ?? "");
   // Client ids in visit order.
@@ -78,6 +80,9 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
   const [editingBase, setEditingBase] = useState(false);
   // The client whose location for this route is being set, the same way.
   const [locating, setLocating] = useState<Id<"clients"> | null>(null);
+  // Also save it as the client's location, for every route and their next delivery.
+  const [saveAsDefault, setSaveAsDefault] = useState(false);
+  const [savingLocation, setSavingLocation] = useState(false);
   const [picking, setPicking] = useState(false);
   // The point proposed (an address just chosen, or where the stop is now).
   // Nothing is saved yet: the map zooms there with a pin the office can move,
@@ -101,12 +106,16 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
     }
     return map;
   }, [clients, custom]);
-  const customKey = [...custom].map(([id, p]) => `${id}:${p.lat},${p.lng}`).join("|");
 
   const stops = useMemo(
     () => selected.flatMap((id) => located.get(id) ?? []),
     [selected, located],
   );
+  // Where the stops are, whatever their order: a stop added or moved changes it.
+  const stopsKey = stops
+    .map((c) => `${c._id}:${c.location.lat},${c.location.lng}`)
+    .sort()
+    .join("|");
 
   const optimized = (ids: Id<"clients">[], back: boolean) =>
     optimizeStops(
@@ -115,11 +124,11 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
       back && base !== null,
     ).map((c) => c._id);
 
-  // A new base, "volver a la base" or a stop moved elsewhere changes which order is shortest.
+  // A new base, "volver a la base", or a stop added or moved elsewhere changes which order is shortest.
   useEffect(() => {
     if (clients && !manualOrder) setSelected((ids) => optimized(ids, returnToBase));
-    // Only when those change: ticking a client already reorders in `toggle`.
-  }, [baseKey, returnToBase, customKey, clients === undefined]);
+    // Only when those change (reordering doesn't change `stopsKey`).
+  }, [baseKey, returnToBase, stopsKey, clients === undefined]);
 
   const drivers = driverData?.drivers;
   useEffect(() => {
@@ -193,6 +202,8 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
   function startLocating(client: Client) {
     closeEditor();
     setLocating(client._id);
+    // Without a saved location, this one is usually the right one for every route.
+    setSaveAsDefault(!client.location);
     setPicking(true);
     const current = located.get(client._id)?.location;
     if (current) proposePlace({ name: client.name, location: { lat: current.lat, lng: current.lng } });
@@ -200,11 +211,34 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
     mapSide.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  function confirmLocation() {
+  async function confirmLocation() {
     if (!locatingClient || !draft) return;
     const id = locatingClient._id;
-    const point = draft.location;
+    const point = { lat: draft.location.lat, lng: draft.location.lng };
     const saved = locatingClient.location;
+    if (saveAsDefault) {
+      setSavingLocation(true);
+      try {
+        // Resolves once `clients` has the new location, so the stop is already located.
+        await setClientLocation({ clientId: id, location: point });
+      } catch (e) {
+        alert(errorMessage(e));
+        return;
+      } finally {
+        setSavingLocation(false);
+      }
+      // It's the client's own location now, not one for this route.
+      setCustom((map) => {
+        if (!map.has(id)) return map;
+        const next = new Map(map);
+        next.delete(id);
+        return next;
+      });
+      setSelected((ids) => (ids.includes(id) || ids.length >= MAX_ROUTE_STOPS ? ids : [...ids, id]));
+      setError(null);
+      closeEditor();
+      return;
+    }
     // The pin never left the saved location: there's nothing to remember.
     const unchanged =
       !custom.has(id) && saved && saved.lat === point.lat && saved.lng === point.lng;
@@ -353,7 +387,7 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
                   : `${withoutLocation} clientes aún no tienen ubicación`}{" "}
                 (se guarda en su primera entrega).{" "}
                 {hasMap
-                  ? "Para agregarlos, dales una solo para esta ruta con el botón del pin."
+                  ? "Para agregarlos, dales una con el botón del pin."
                   : "No se pueden agregar."}
               </p>
             )}
@@ -406,7 +440,7 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
                               ? "Tiene otra ubicación para esta ruta"
                               : usable
                                 ? "Cambiar la ubicación solo para esta ruta"
-                                : "Darle una ubicación para esta ruta"
+                                : "Darle una ubicación"
                           }
                           disabled={full && !checked}
                           onClick={() => startLocating(client)}
@@ -550,21 +584,51 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
             {locatingClient ? (
               <div className={styles.baseEditor}>
                 <span>
-                  <strong>Ubicación de {locatingClient.name} para esta ruta.</strong>{" "}
+                  <strong>
+                    Ubicación de {locatingClient.name}
+                    {saveAsDefault ? "." : " para esta ruta."}
+                  </strong>{" "}
                   {draft
                     ? "Arrastra el pin, haz clic en el punto exacto o busca la dirección."
-                    : "Busca la dirección o haz clic en el mapa donde va la entrega."}{" "}
-                  La ubicación guardada del cliente no cambia.
+                    : "Busca la dirección o haz clic en el mapa donde va la entrega."}
+                  {!saveAsDefault &&
+                    locatingClient.location &&
+                    " La ubicación guardada del cliente no cambia."}
                 </span>
                 <AddressSearch onSelect={proposePlace} autoFocus={!draft} />
+                <div className={styles.checkRow}>
+                  <label className={styles.check}>
+                    <input
+                      type="checkbox"
+                      checked={saveAsDefault}
+                      disabled={savingLocation}
+                      onChange={(e) => setSaveAsDefault(e.target.checked)}
+                    />
+                    {locatingClient.location
+                      ? "Reemplazar la ubicación guardada del cliente"
+                      : "Guardar como ubicación del cliente (para todas las rutas)"}
+                  </label>
+                  {/* Outside the label: tapping it mustn't tick the box. */}
+                  <HelpTip label="¿Qué hace esta opción?">
+                    {locatingClient.location
+                      ? "Si la marcas, esta ubicación reemplaza la guardada del cliente (por ejemplo, si se mudó). Las rutas ya creadas no cambian. Si no, solo se usa en esta ruta."
+                      : "Este cliente aún no tiene ubicación guardada. Si marcas la casilla, esta queda guardada para todas sus rutas y entregas. Si no, solo se usa en esta ruta."}
+                  </HelpTip>
+                </div>
                 <div className={styles.baseButtons}>
                   <button
                     type="button"
                     className="btn btn-primary"
-                    disabled={!draft}
-                    onClick={confirmLocation}
+                    disabled={!draft || savingLocation}
+                    onClick={() => void confirmLocation()}
                   >
-                    Usar esta ubicación
+                    {savingLocation ? (
+                      <>
+                        <Spinner size={18} light /> Guardando…
+                      </>
+                    ) : (
+                      "Usar esta ubicación"
+                    )}
                   </button>
                   {custom.has(locatingClient._id) && (
                     <button type="button" className="btn btn-ghost" onClick={clearLocation}>

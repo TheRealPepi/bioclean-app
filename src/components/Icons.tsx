@@ -90,6 +90,13 @@ export const CloudOffIcon = (p: IconProps) => (
   </Icon>
 );
 
+export const HelpIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01" />
+  </Icon>
+);
+
 export const UploadIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 16V4M7 9l5-5 5 5M4 20h16" />

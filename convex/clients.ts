@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin, requireUser } from "./lib/access";
+import { isValidPoint } from "./lib/geo";
 import { cleanEmail, cleanName, cleanPhone, isEmail, isPhone, normalizeKey } from "./lib/text";
 import { notifyChannel } from "./schema";
 
@@ -208,6 +209,21 @@ export const clearLocation = mutation({
     const client = await ctx.db.get(clientId);
     if (!client) throw new ConvexError("El cliente ya no existe.");
     await ctx.db.patch(clientId, { location: undefined });
+  },
+});
+
+/** The office sets the client's saved location (from the route builder). */
+export const setLocation = mutation({
+  args: {
+    clientId: v.id("clients"),
+    location: v.object({ lat: v.number(), lng: v.number() }),
+  },
+  handler: async (ctx, { clientId, location }) => {
+    await requireAdmin(ctx);
+    const client = await ctx.db.get(clientId);
+    if (!client) throw new ConvexError("El cliente ya no existe.");
+    if (!isValidPoint(location)) throw new ConvexError("La ubicación no es válida.");
+    await ctx.db.patch(clientId, { location });
   },
 });
 
