@@ -62,13 +62,14 @@ export const emptyDraft = (vehicle?: { _id: Id<"vehicles">; name: string }): Dra
 });
 
 /** A draft saved by the app before several facturas were allowed. */
-type DraftV1 = Omit<Draft, "version" | "invoices" | "photos"> & {
+export type DraftV1 = Omit<Draft, "version" | "invoices" | "photos"> & {
   version?: undefined;
   invoiceNumber: string;
   photos: Partial<Record<"invoice" | PhotoKey, Blob>>;
 };
 
-function upgrade(saved: Draft | DraftV1): Draft {
+/** A saved draft in the current shape, whatever app version saved it. */
+export function upgrade(saved: Draft | DraftV1): Draft {
   // Drafts saved before the client set the status have no `clientNotes`.
   if (saved.version === 2) return { ...saved, clientNotes: saved.clientNotes ?? "" };
   const { invoiceNumber, photos, ...rest } = saved;

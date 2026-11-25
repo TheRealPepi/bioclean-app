@@ -1,17 +1,24 @@
 [build]
-  # Deploys the Convex functions to production, then builds the site with
-  # VITE_CONVEX_URL pointing at that deployment. Requires the CONVEX_DEPLOY_KEY
-  # environment variable in Netlify (Convex dashboard → Settings → General →
-  # Production deploy key).
-  command = "npx convex deploy --cmd 'npm run build'"
+  # Runs the tests first: if one fails, nothing is deployed (neither the Convex
+  # functions nor the site). Then deploys the Convex functions to production
+  # and builds the site with VITE_CONVEX_URL pointing at that deployment.
+  # Requires the CONVEX_DEPLOY_KEY environment variable in Netlify (Convex
+  # dashboard → Settings → General → Production deploy key).
+  command = "npm test && npx convex deploy --cmd 'npm run build'"
   publish = "dist"
 
-# Pull request previews only check that the site builds. They must not deploy
-# the Convex functions: the only deploy key in Netlify is the production one,
-# and Convex refuses to use it outside a production build. The preview site has
-# no backend unless VITE_CONVEX_URL is set in Netlify for deploy previews.
+# The test runner (Vitest) needs Node 22.12 or newer. Applies to production
+# builds and deploy previews.
+[build.environment]
+  NODE_VERSION = "22"
+
+# Pull request previews only run the tests and check that the site builds. They
+# must not deploy the Convex functions: the only deploy key in Netlify is the
+# production one, and Convex refuses to use it outside a production build. The
+# preview site has no backend unless VITE_CONVEX_URL is set in Netlify for
+# deploy previews.
 [context.deploy-preview]
-  command = "npm run build"
+  command = "npm test && npm run build"
 
 # Single-page app: let React Router handle every path (e.g. /entregas/123).
 [[redirects]]
