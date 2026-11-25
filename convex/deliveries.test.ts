@@ -98,12 +98,16 @@ test("a delivery needs a factura number, no repeated numbers, and photos that we
   expect(await t.run(async (ctx) => await ctx.db.query("deliveries").collect())).toEqual([]);
 });
 
-test("a delivery with a problem needs an explanation", async () => {
+test("a delivery with a problem needs no explanation, but keeps one from older app versions", async () => {
   const { t, asDriver, deliveryArgs } = await setup();
 
-  await expect(
-    asDriver.mutation(api.deliveries.create, await deliveryArgs({ status: "faltante" })),
-  ).rejects.toThrow("Describe qué pasó");
+  const bare = await asDriver.mutation(
+    api.deliveries.create,
+    await deliveryArgs({ status: "faltante", notes: "" }),
+  );
+  const saved = await t.run(async (ctx) => await ctx.db.get(bare));
+  expect(saved).toMatchObject({ status: "faltante" });
+  expect(saved).not.toHaveProperty("clientNotes");
 
   const id = await asDriver.mutation(
     api.deliveries.create,

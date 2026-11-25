@@ -8,7 +8,7 @@ const PROBLEMS = STATUSES.filter((s) => STATUS_META[s].alert);
 
 /**
  * The client says whether the delivery went well, right before signing. If
- * not, they pick what went wrong and describe it in their own words.
+ * not, they pick what went wrong. Only taps: clients don't have to type.
  * The signature covers this answer: changing it after signing asks for a new
  * signature (see SignatureStep).
  */
@@ -83,7 +83,8 @@ export function OutcomeStep({
                 aria-checked={draft.status === status}
                 className={styles.option}
                 style={statusStyle(status)}
-                onClick={() => onChange({ status })}
+                // Also drops any explanation left from an older version of the app.
+                onClick={() => onChange({ status, clientNotes: "" })}
               >
                 <i className={styles.dot} />
                 <span>{STATUS_META[status].label}</span>
@@ -91,17 +92,6 @@ export function OutcomeStep({
               </button>
             ))}
           </fieldset>
-
-          <label className={styles.field}>
-            <span className={styles.label}>¿Qué pasó?</span>
-            <textarea
-              className="input"
-              value={draft.clientNotes}
-              onChange={(e) => onChange({ clientNotes: e.target.value })}
-              placeholder="Explique qué faltó o qué cambió"
-              rows={3}
-            />
-          </label>
         </>
       )}
     </div>

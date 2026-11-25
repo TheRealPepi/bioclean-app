@@ -110,12 +110,9 @@ export const create = mutation({
     }
 
     const notes = args.notes.trim();
+    // The client picks the problem with a tap; an explanation only comes from
+    // older app versions, which asked the client to type one.
     const clientNotes = args.status === "exitosa" ? "" : (args.clientNotes ?? "").trim();
-    // The client describes the problem. The driver's notes still count for
-    // deliveries saved by app versions from before the client set the status.
-    if (args.status !== "exitosa" && !clientNotes && !notes) {
-      throw new ConvexError("Describe qué pasó con la entrega.");
-    }
 
     const photoIds = [
       ...cleaned.map((i) => i.photoId),

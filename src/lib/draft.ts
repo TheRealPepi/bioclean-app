@@ -33,7 +33,7 @@ export type Draft = {
   payment?: Payment;
   /** The driver's notes. Optional. */
   notes: string;
-  /** What the client wrote happened, when they chose a problem (right before signing). */
+  /** What the client wrote happened. Only in drafts from older app versions; no longer asked. */
   clientNotes: string;
   /** The client's signature, only valid while `signatureIsCurrent` (see lib/signature.ts). */
   signature?: DraftSignature;

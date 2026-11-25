@@ -303,7 +303,7 @@ export function NewDeliveryWizard({
             ) : missing === "signature" ? (
               "Firme para terminar"
             ) : missing === "answer" ? (
-              draft.status === undefined ? "Responda la pregunta 1" : "Complete la pregunta 1"
+              "Responda la pregunta 1"
             ) : (
               "Confirmar entrega"
             )}

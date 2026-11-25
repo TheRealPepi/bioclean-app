@@ -14,7 +14,6 @@ export function signedContentKey(d: Draft): string {
     d.payment ?? null,
     d.notes.trim(),
     d.status ?? null,
-    d.status === "exitosa" ? "" : d.clientNotes.trim(),
   ]);
 }
 
@@ -23,9 +22,9 @@ export function signatureIsCurrent(d: Draft): boolean {
   return d.signature !== undefined && d.signature.signedFor === signedContentKey(d);
 }
 
-/** The client said how the delivery went (and, if there was a problem, what happened). */
+/** The client said how the delivery went (for a problem, which one). */
 export function answerComplete(d: Draft): boolean {
-  return d.status !== undefined && (d.status === "exitosa" || d.clientNotes.trim() !== "");
+  return d.status !== undefined;
 }
 
 /** What the client still has to do on their screen, in order; null when done. */

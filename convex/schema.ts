@@ -162,12 +162,13 @@ export default defineSchema({
     status: deliveryStatus,
     // The driver's notes (optional).
     notes: v.string(),
-    // What the client wrote happened, when they chose a problem. The client
-    // sets the status (and this) on the phone right before signing.
+    // What the client wrote happened, when they chose a problem. Only from
+    // older app versions: now the client just picks the problem, right before
+    // signing.
     clientNotes: v.optional(v.string()),
     // The client's finger-drawn signature (a trimmed transparent PNG), made on
     // a screen showing the facturas, payment and driver's notes it agrees to,
-    // and confirming the status and clientNotes the client chose just above.
+    // and confirming the status the client chose just above.
     // Saved in the same mutation as the rest, and nothing signed can be edited
     // afterwards: any future edit of those fields must remove it.
     // Required by the app; missing only on deliveries from before signatures.
