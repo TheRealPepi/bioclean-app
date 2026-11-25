@@ -74,6 +74,11 @@ export const create = mutation({
     payment: v.optional(paymentType),
     status: deliveryStatus,
     notes: v.string(),
+    // What the client wrote happened, when they chose a problem after signing.
+    clientNotes: v.optional(v.string()),
+    // The app always sends it. Still optional here so deliveries saved on a
+    // phone with an app version from before signatures can upload.
+    signature: v.optional(v.object({ photoId: v.id("_storage"), signedAt: v.number() })),
     // Set by the phone's outbox (see src/lib/outbox.ts).
     deliveredAt: v.optional(v.number()),
     clientRequestId: v.optional(v.string()),
@@ -105,11 +110,19 @@ export const create = mutation({
     }
 
     const notes = args.notes.trim();
-    if (args.status !== "exitosa" && !notes) {
-      throw new ConvexError("Describe en las anotaciones qué pasó con la entrega.");
+    const clientNotes = args.status === "exitosa" ? "" : (args.clientNotes ?? "").trim();
+    // The client describes the problem. The driver's notes still count for
+    // deliveries saved by app versions from before the client set the status.
+    if (args.status !== "exitosa" && !clientNotes && !notes) {
+      throw new ConvexError("Describe qué pasó con la entrega.");
     }
 
-    const photoIds = [...cleaned.map((i) => i.photoId), args.receiverPhotoId, args.goodsPhotoId];
+    const photoIds = [
+      ...cleaned.map((i) => i.photoId),
+      args.receiverPhotoId,
+      args.goodsPhotoId,
+      ...(args.signature ? [args.signature.photoId] : []),
+    ];
     for (const photoId of photoIds) {
       if ((await ctx.db.system.get(photoId)) === null) {
         throw new ConvexError("Una de las fotos no se subió correctamente. Inténtalo de nuevo.");
@@ -174,6 +187,11 @@ export const create = mutation({
       payment: args.payment,
       status: args.status,
       notes,
+      clientNotes: clientNotes || undefined,
+      signature: args.signature && {
+        photoId: args.signature.photoId,
+        signedAt: Math.min(args.signature.signedAt, now),
+      },
       driverId: user._id,
       driverName: displayName(user),
       deliveredAt: when,
@@ -314,6 +332,8 @@ export const list = query({
       locationSource: d.locationSource ?? null,
       vehicleName: d.vehicleName ?? null,
       payment: d.payment ?? null,
+      // false only on deliveries from before signatures.
+      signed: d.signature !== undefined,
     }));
   },
 });
@@ -338,6 +358,7 @@ export const get = query({
       invoicePhotoId: _invoicePhotoId,
       receiverPhotoId: _receiverPhotoId,
       goodsPhotoId: _goodsPhotoId,
+      signature,
       reminded,
       ...rest
     } = delivery;
@@ -363,6 +384,12 @@ export const get = query({
       reminded: isAdmin ? (reminded ?? []) : [],
       locationSource: delivery.locationSource ?? null,
       driverPosition: delivery.driverPosition ?? null,
+      signature: signature
+        ? {
+            url: await url(signature.photoId),
+            signedAt: signature.signedAt,
+          }
+        : null,
       invoices: await Promise.all(
         invoices.map(async (i) => {
           const previous = i.previousDeliveryId ? await ctx.db.get(i.previousDeliveryId) : null;

@@ -1,0 +1,128 @@
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.choices {
+  display: grid;
+  gap: 10px;
+}
+
+/* Big tap targets: the client answers with one touch. */
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.problemChoice {
+  --status-fg: var(--danger);
+  --status-bg: var(--danger-bg);
+}
+
+.choiceIcon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--status-bg);
+  color: var(--status-fg);
+}
+
+.choiceText {
+  display: grid;
+  gap: 2px;
+}
+
+.choiceText strong {
+  font-size: 18px;
+}
+
+.choiceText span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.selected {
+  border-color: var(--status-fg);
+  background: var(--status-bg);
+}
+
+.selected .choiceIcon {
+  background: var(--status-fg);
+  color: #fff;
+}
+
+.selected .choiceText strong {
+  color: var(--status-fg);
+}
+
+.problems {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--status-bg);
+  color: var(--status-fg);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.option[aria-checked="true"] {
+  box-shadow: inset 0 0 0 2px var(--status-fg);
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.check {
+  margin-left: auto;
+}
+
+.field {
+  display: block;
+}
+

@@ -41,8 +41,19 @@ export type OutboxItem = {
   status: DeliveryStatus;
   payment?: Payment;
   notes: string;
+  /** What the client wrote happened. Missing on items saved before the client set the status. */
+  clientNotes?: string;
+  /** Missing only on items saved before signatures. */
+  signature?: OutboxSignature;
   /** Set when the server rejected it; it then waits for the driver to retry. */
   error?: string;
+};
+
+export type OutboxSignature = {
+  image: StoredPhoto;
+  /** Set once uploaded, so a retry doesn't upload it again. */
+  imageId?: Id<"_storage">;
+  signedAt: number;
 };
 
 /** The item's facturas, also for items saved by older versions with a single one. */
@@ -116,6 +127,11 @@ export async function outboxItemFromDraft(draft: Draft, userId: string): Promise
     status: draft.status!,
     payment: draft.payment,
     notes: draft.notes,
+    clientNotes: draft.status === "exitosa" ? "" : draft.clientNotes,
+    signature: {
+      image: await photoBytes(draft.signature!.image),
+      signedAt: draft.signature!.signedAt,
+    },
   };
 }
 

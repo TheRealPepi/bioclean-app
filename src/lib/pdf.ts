@@ -28,6 +28,22 @@ async function loadPhoto(url: string | null): Promise<LoadedImage | null> {
   }
 }
 
+/** The signature is kept as a PNG: re-encoding it as JPEG would turn its transparency black. */
+async function loadSignature(url: string | null | undefined): Promise<LoadedImage | null> {
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    const { width, height } = bitmap;
+    bitmap.close();
+    return { data: await blobToDataUrl(blob), width, height };
+  } catch {
+    return null;
+  }
+}
+
 export function pdfFileName(d: DeliveryDetails): string {
   return `Entrega_${fileSafe(d.invoiceNumber)}_${fileSafe(d.clientName)}_${isoDate(d.deliveredAt)}.pdf`;
 }
@@ -39,8 +55,9 @@ export async function downloadDeliveryPdf(d: DeliveryDetails): Promise<void> {
     { caption: "Quien recibe", url: d.photos.receiver },
     { caption: "Mercancía", url: d.photos.goods },
   ];
-  const [{ jsPDF }, ...photos] = await Promise.all([
+  const [{ jsPDF }, signature, ...photos] = await Promise.all([
     import("jspdf"),
+    loadSignature(d.signature?.url),
     ...sources.map((p) => loadPhoto(p.url)),
   ]);
 
@@ -132,10 +149,32 @@ export async function downloadDeliveryPdf(d: DeliveryDetails): Promise<void> {
   }
   y += 14;
 
+  // What the client wrote happened, in the status color.
+  if (d.clientNotes) {
+    doc.setFontSize(9);
+    doc.setTextColor(...status.rgb);
+    doc.text("COMENTARIO DEL CLIENTE", margin, y);
+    y += 3;
+    doc.setFontSize(10.5);
+    const clientLines = doc.splitTextToSize(d.clientNotes, contentW - 8);
+    const clientH = clientLines.length * 5 + 6;
+    const tint = status.rgb.map((c) => Math.round(255 - (255 - c) * 0.1)) as [
+      number,
+      number,
+      number,
+    ];
+    doc.setDrawColor(...status.rgb);
+    doc.setFillColor(...tint);
+    doc.roundedRect(margin, y, contentW, clientH, 2, 2, "FD");
+    doc.setTextColor(...TEXT);
+    doc.text(clientLines, margin + 4, y + 6.5);
+    y += clientH + 10;
+  }
+
   // Notes
   doc.setFontSize(9);
   doc.setTextColor(...MUTED);
-  doc.text("ANOTACIONES", margin, y);
+  doc.text("ANOTACIONES DEL CHOFER", margin, y);
   y += 3;
   doc.setFontSize(10.5);
   const noteLines = doc.splitTextToSize(d.notes || "Sin anotaciones.", contentW - 8);
@@ -146,6 +185,46 @@ export async function downloadDeliveryPdf(d: DeliveryDetails): Promise<void> {
   doc.setTextColor(...TEXT);
   doc.text(noteLines, margin + 4, y + 6.5);
   y += noteH + 10;
+
+  // Client's signature, or the reason they didn't sign.
+  const sigBoxH = 32;
+  const sigBlockH = d.signature ? sigBoxH + 17 : 22;
+  if (y + sigBlockH > pageH - 14) {
+    doc.addPage();
+    y = 20;
+  }
+  doc.setFontSize(9);
+  doc.setTextColor(...MUTED);
+  doc.text("FIRMA DE CONFORMIDAD DEL CLIENTE", margin, y);
+  y += 3;
+  if (d.signature) {
+    const boxW = 90;
+    doc.setDrawColor(...BORDER);
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(margin, y, boxW, sigBoxH, 2, 2, "FD");
+    if (signature) {
+      const scale = Math.min((boxW - 6) / signature.width, (sigBoxH - 6) / signature.height);
+      const w = signature.width * scale;
+      const h = signature.height * scale;
+      // "FAST": jsPDF stores PNGs uncompressed otherwise (over half a MB).
+      const x = margin + (boxW - w) / 2;
+      doc.addImage(signature.data, "PNG", x, y + (sigBoxH - h) / 2, w, h, undefined, "FAST");
+    } else {
+      doc.setTextColor(...MUTED);
+      doc.text("Firma no disponible", margin + boxW / 2, y + sigBoxH / 2, { align: "center" });
+    }
+    doc.setFontSize(10.5);
+    doc.setTextColor(...TEXT);
+    const { signedAt } = d.signature;
+    const signed = `Firmado el ${formatLongDate(signedAt)}, ${formatTime(signedAt)}`;
+    doc.text(doc.splitTextToSize(signed, contentW)[0], margin, y + sigBoxH + 6);
+    y += sigBoxH + 17;
+  } else {
+    doc.setFontSize(10.5);
+    doc.setTextColor(...MUTED);
+    doc.text("Sin firma (entrega anterior a la firma digital).", margin, y + 5);
+    y += 14;
+  }
 
   // Photos: three per row, each fit into a box keeping its aspect ratio.
   const gap = 5;

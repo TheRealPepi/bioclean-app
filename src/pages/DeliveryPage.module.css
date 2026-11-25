@@ -94,6 +94,39 @@
   color: var(--muted);
 }
 
+/* The client's own words about the problem, in the status color. */
+.clientNotes {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--status-fg);
+  border-radius: 10px;
+  background: var(--status-bg);
+}
+
+.clientNotes .sectionTitle {
+  margin-bottom: 6px;
+  color: var(--status-fg);
+}
+
+.signature {
+  display: grid;
+  gap: 10px;
+}
+
+.signature img {
+  display: block;
+  max-width: min(100%, 420px);
+  max-height: 180px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
+.signature p {
+  margin: 0;
+}
+
 .map {
   display: block;
   width: 100%;

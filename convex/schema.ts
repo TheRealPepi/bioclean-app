@@ -160,7 +160,23 @@ export default defineSchema({
     // (e.g. "vencimiento:email"), so none is sent twice.
     reminded: v.optional(v.array(v.string())),
     status: deliveryStatus,
+    // The driver's notes (optional).
     notes: v.string(),
+    // What the client wrote happened, when they chose a problem. The client
+    // sets the status (and this) on the phone right before signing.
+    clientNotes: v.optional(v.string()),
+    // The client's finger-drawn signature (a trimmed transparent PNG), made on
+    // a screen showing the facturas, payment and driver's notes it agrees to,
+    // and confirming the status and clientNotes the client chose just above.
+    // Saved in the same mutation as the rest, and nothing signed can be edited
+    // afterwards: any future edit of those fields must remove it.
+    // Required by the app; missing only on deliveries from before signatures.
+    signature: v.optional(
+      v.object({
+        photoId: v.id("_storage"),
+        signedAt: v.number(),
+      }),
+    ),
     driverId: v.id("users"),
     driverName: v.string(),
     // When the driver recorded it on the phone. Can be earlier than

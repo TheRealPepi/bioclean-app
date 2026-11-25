@@ -7,7 +7,6 @@ import { CloseIcon } from "../../components/Icons";
 import { PaymentSelect } from "../../components/PaymentSelect";
 import { PhotoCapture } from "../../components/PhotoCapture";
 import { FullScreenSpinner, Spinner } from "../../components/Spinner";
-import { StatusSelect } from "../../components/StatusSelect";
 import {
   clearDraft,
   draftHasContent,
@@ -27,8 +26,10 @@ import {
   useEarlierDeliveries,
   type EarlierDelivery,
 } from "../../lib/useEarlierDeliveries";
+import { clientStepMissing } from "../../lib/signature";
 import { useOnline } from "../../lib/useOnline";
 import type { Vehicle } from "../../lib/useVehicleList";
+import { SignatureStep, type Attention } from "./SignatureStep";
 import { InvoicesStep, LocationStep, ReviewStep, VehicleStep } from "./steps";
 import styles from "./NewDeliveryWizard.module.css";
 
@@ -39,10 +40,10 @@ type StepKey =
   | "receiverPhoto"
   | "goodsPhoto"
   | "location"
-  | "status"
   | "payment"
   | "notes"
-  | "review";
+  | "review"
+  | "signature";
 
 const STEPS: { key: StepKey; title: string; hint?: string }[] = [
   { key: "client", title: "Cliente", hint: "Elige el cliente de la lista o escribe uno nuevo." },
@@ -52,13 +53,25 @@ const STEPS: { key: StepKey; title: string; hint?: string }[] = [
     title: "Facturas",
     hint: "Número y foto de cada factura. Que se lean el número y la firma.",
   },
-  { key: "receiverPhoto", title: "Foto de quien recibe", hint: "La persona que recibe la mercancía." },
+  // Goods first: the person receiving often shows up later.
   { key: "goodsPhoto", title: "Foto de la mercancía", hint: "La mercancía entregada." },
+  { key: "receiverPhoto", title: "Foto de quien recibe", hint: "La persona que recibe la mercancía." },
   { key: "location", title: "Ubicación de entrega" },
-  { key: "status", title: "Estatus de la entrega" },
   { key: "payment", title: "Pago", hint: "¿La entrega quedó pagada o es a crédito?" },
-  { key: "notes", title: "Anotaciones" },
-  { key: "review", title: "Revisa y guarda" },
+  {
+    key: "notes",
+    title: "Anotaciones",
+    hint: "Opcional: cualquier detalle que quieras dejar registrado.",
+  },
+  {
+    key: "review",
+    title: "Revisa la entrega",
+    hint: "Después pásale el teléfono al cliente para que responda, firme y toque «Confirmar entrega».",
+  },
+  // Shown to the client: they say how the delivery went, then sign. One
+  // screen, so they can't stop halfway and hand the phone back.
+  // Speaks to the client directly, so neither side mistakes whose turn it is.
+  { key: "signature", title: "Cliente: confirme su entrega" },
 ];
 
 const PHOTO_STEPS: Partial<Record<StepKey, PhotoKey>> = {
@@ -96,14 +109,16 @@ function isStepValid(
       return d.photos[PHOTO_STEPS[key]!] !== undefined;
     case "location":
       return d.location !== undefined && d.locationSource !== undefined;
-    case "status":
-      return d.status !== undefined;
     case "payment":
       return d.payment !== undefined;
     case "notes":
-      return d.status === "exitosa" || d.notes.trim() !== "";
+      return true;
     case "review":
-      return STEPS.slice(0, -1).every((s) => isStepValid(s.key, d, vehicles, earlier));
+      return STEPS.filter((s) => s.key !== "review" && s.key !== "signature").every((s) =>
+        isStepValid(s.key, d, vehicles, earlier),
+      );
+    case "signature":
+      return isStepValid("review", d, vehicles, earlier) && clientStepMissing(d) === null;
   }
 }
 
@@ -141,6 +156,7 @@ export function NewDeliveryWizard({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [attention, setAttention] = useState<Attention | null>(null);
 
   // Set when the driver tapped "Registrar entrega" on a stop of their route.
   const routeClient = (
@@ -185,6 +201,7 @@ export function NewDeliveryWizard({
 
   const goTo = (index: number) => {
     setError(null);
+    setAttention(null);
     patch({ step: index });
     window.scrollTo(0, 0);
   };
@@ -212,7 +229,9 @@ export function NewDeliveryWizard({
   }
 
   const photoKey = PHOTO_STEPS[step.key];
-  const notesRequired = draft.status !== undefined && draft.status !== "exitosa";
+  const forClient = step.key === "signature";
+  // On the client's screen, what's still missing there (null: ready to save).
+  const missing = forClient ? clientStepMissing(draft) : null;
 
   return (
     <div className={styles.wizard}>
@@ -222,10 +241,19 @@ export function NewDeliveryWizard({
             <CloseIcon size={22} />
           </Link>
           <div className={styles.headerText}>
-            <strong>Nueva entrega</strong>
-            <span>
-              Paso {stepIndex + 1} de {STEPS.length}
-            </span>
+            {forClient ? (
+              <>
+                <strong>Para el cliente</strong>
+                <span>Último paso</span>
+              </>
+            ) : (
+              <>
+                <strong>Nueva entrega</strong>
+                <span>
+                  Paso {stepIndex + 1} de {STEPS.length}
+                </span>
+              </>
+            )}
           </div>
         </div>
         <div className={styles.progress}>
@@ -242,12 +270,6 @@ export function NewDeliveryWizard({
               otro lugar.
             </p>
           )
-        ) : step.key === "notes" ? (
-          <p className={styles.hint}>
-            {notesRequired
-              ? "Obligatorio: explica qué pasó (qué faltó, qué se cambió, quién lo autorizó…)."
-              : "Opcional: cualquier detalle que quieras dejar registrado."}
-          </p>
         ) : (
           step.hint && <p className={styles.hint}>{step.hint}</p>
         )}
@@ -312,10 +334,6 @@ export function NewDeliveryWizard({
           />
         )}
 
-        {step.key === "status" && (
-          <StatusSelect value={draft.status} onChange={(status) => patch({ status })} />
-        )}
-
         {step.key === "payment" && (
           <PaymentSelect value={draft.payment} onChange={(payment) => patch({ payment })} />
         )}
@@ -339,6 +357,10 @@ export function NewDeliveryWizard({
           />
         )}
 
+        {step.key === "signature" && (
+          <SignatureStep draft={draft} onChange={patch} attention={attention} />
+        )}
+
         {error && <p className={styles.error}>{error}</p>}
       </main>
 
@@ -356,16 +378,27 @@ export function NewDeliveryWizard({
         {isLast ? (
           <button
             type="button"
-            className={`btn btn-primary btn-lg ${styles.next}`}
-            disabled={!valid || submitting}
-            onClick={() => void submit(draft)}
+            // Never silently disabled for the client: while something's
+            // missing it says what, and a tap takes them there.
+            className={`btn btn-primary btn-lg ${styles.next} ${
+              missing ? styles.pending : styles.nudge
+            }`}
+            disabled={!isStepValid("review", draft, vehicles, earlier) || submitting}
+            onClick={() => {
+              if (missing) setAttention((a) => ({ target: missing, n: (a?.n ?? 0) + 1 }));
+              else if (valid) void submit(draft);
+            }}
           >
             {submitting ? (
               <>
-                <Spinner size={20} light /> Guardando entrega…
+                <Spinner size={20} light /> Confirmando entrega…
               </>
+            ) : missing === "signature" ? (
+              "Firme para terminar"
+            ) : missing === "answer" ? (
+              draft.status === undefined ? "Responda la pregunta 1" : "Complete la pregunta 1"
             ) : (
-              "Guardar entrega"
+              "Confirmar entrega"
             )}
           </button>
         ) : (
@@ -375,7 +408,7 @@ export function NewDeliveryWizard({
             disabled={!valid}
             onClick={() => goTo(stepIndex + 1)}
           >
-            Siguiente
+            {step.key === "review" ? "Pasar al cliente" : "Siguiente"}
           </button>
         )}
       </footer>

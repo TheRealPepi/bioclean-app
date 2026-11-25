@@ -24,7 +24,7 @@ import {
 } from "../lib/payment";
 import { downloadDeliveryPdf, type DeliveryDetails } from "../lib/pdf";
 import { REPEAT_META } from "../lib/repeat";
-import { STATUS_META } from "../lib/status";
+import { STATUS_META, statusStyle } from "../lib/status";
 import styles from "./DeliveryPage.module.css";
 
 export function DeliveryPage() {
@@ -97,7 +97,13 @@ export function DeliveryPage() {
 
       <div className={styles.grid}>
         <section className={`card ${styles.section}`}>
-          <h2 className={styles.sectionTitle}>Anotaciones</h2>
+          {delivery.clientNotes && (
+            <div className={styles.clientNotes} style={statusStyle(delivery.status)}>
+              <h2 className={styles.sectionTitle}>Comentario del cliente</h2>
+              <p className={styles.notes}>{delivery.clientNotes}</p>
+            </div>
+          )}
+          <h2 className={styles.sectionTitle}>Anotaciones del chofer</h2>
           <p className={delivery.notes ? styles.notes : styles.empty}>
             {delivery.notes || "Sin anotaciones."}
           </p>
@@ -145,6 +151,25 @@ export function DeliveryPage() {
           )}
         </section>
       </div>
+
+      <section className={`card ${styles.section}`}>
+        <h2 className={styles.sectionTitle}>Firma de conformidad del cliente</h2>
+        {delivery.signature ? (
+          <div className={styles.signature}>
+            {delivery.signature.url ? (
+              <img src={delivery.signature.url} alt="Firma del cliente" />
+            ) : (
+              <p className={styles.empty}>Imagen de la firma no disponible.</p>
+            )}
+            <p>
+              Firmado el {formatLongDate(delivery.signature.signedAt)},{" "}
+              {formatTime(delivery.signature.signedAt)}
+            </p>
+          </div>
+        ) : (
+          <p className={styles.empty}>Sin firma (entrega anterior a la firma digital).</p>
+        )}
+      </section>
 
       <section className={`card ${styles.section}`}>
         <h2 className={styles.sectionTitle}>Fotos</h2>

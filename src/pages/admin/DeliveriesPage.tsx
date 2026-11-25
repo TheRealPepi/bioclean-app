@@ -104,6 +104,7 @@ export function DeliveriesPage() {
         "Ubicación",
         "Tipo de ubicación",
         "Factura repetida",
+        "Firma",
       ],
       rows.map((d) => [
         isoDate(d.deliveredAt),
@@ -118,6 +119,7 @@ export function DeliveriesPage() {
         googleMapsUrl(d.location),
         d.locationSource ? LOCATION_SOURCE_SHORT[d.locationSource] : "",
         d.repeat ? REPEAT_META[d.repeat].label : "",
+        d.signed ? "Firmada" : "Sin firma",
       ]),
     );
   }

@@ -5,7 +5,6 @@ import { AlertIcon, CheckIcon, PinIcon, PlusIcon } from "../../components/Icons"
 import { PaymentBadge } from "../../components/PaymentBadge";
 import { PhotoCapture } from "../../components/PhotoCapture";
 import { Spinner } from "../../components/Spinner";
-import { StatusBadge } from "../../components/StatusBadge";
 import { formatShort } from "../../lib/dates";
 import type { Draft, DraftInvoice, LatLng } from "../../lib/draft";
 import { osmEmbedUrl } from "../../lib/maps";
@@ -547,10 +546,10 @@ export function ReviewStep({
             <span className={styles.muted}>Seguimiento: {followUps.join(", ")}</span>
           )}
         </ReviewRow>
-        <ReviewRow label="Fotos" onEdit={() => onEdit("receiverPhoto")}>
+        <ReviewRow label="Fotos" onEdit={() => onEdit("goodsPhoto")}>
           <div className={styles.thumbs}>
-            <Thumb blob={draft.photos.receiver} label="Quien recibe" />
             <Thumb blob={draft.photos.goods} label="Mercancía" />
+            <Thumb blob={draft.photos.receiver} label="Quien recibe" />
           </div>
         </ReviewRow>
         <ReviewRow label="Ubicación" onEdit={() => onEdit("location")}>
@@ -564,9 +563,6 @@ export function ReviewStep({
           ) : (
             "—"
           )}
-        </ReviewRow>
-        <ReviewRow label="Estatus" onEdit={() => onEdit("status")}>
-          {draft.status ? <StatusBadge status={draft.status} /> : "—"}
         </ReviewRow>
         <ReviewRow label="Pago" onEdit={() => onEdit("payment")}>
           {draft.payment ? <PaymentBadge payment={draft.payment} /> : "—"}

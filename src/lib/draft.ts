@@ -31,8 +31,21 @@ export type Draft = {
   driverPosition?: LatLng;
   status?: DeliveryStatus;
   payment?: Payment;
+  /** The driver's notes. Optional. */
   notes: string;
+  /** What the client wrote happened, when they chose a problem (right before signing). */
+  clientNotes: string;
+  /** The client's signature, only valid while `signatureIsCurrent` (see lib/signature.ts). */
+  signature?: DraftSignature;
   updatedAt: number;
+};
+
+export type DraftSignature = {
+  /** Trimmed transparent PNG. */
+  image: Blob;
+  signedAt: number;
+  /** `signedContentKey` of the draft when it was signed. */
+  signedFor: string;
 };
 
 export const emptyDraft = (vehicle?: { _id: Id<"vehicles">; name: string }): Draft => ({
@@ -44,6 +57,7 @@ export const emptyDraft = (vehicle?: { _id: Id<"vehicles">; name: string }): Dra
   invoices: [{ number: "" }],
   photos: {},
   notes: "",
+  clientNotes: "",
   updatedAt: Date.now(),
 });
 
@@ -55,13 +69,15 @@ type DraftV1 = Omit<Draft, "version" | "invoices" | "photos"> & {
 };
 
 function upgrade(saved: Draft | DraftV1): Draft {
-  if (saved.version === 2) return saved;
+  // Drafts saved before the client set the status have no `clientNotes`.
+  if (saved.version === 2) return { ...saved, clientNotes: saved.clientNotes ?? "" };
   const { invoiceNumber, photos, ...rest } = saved;
   return {
     ...rest,
     version: 2,
     // The steps changed, so start again from the first one (nothing is lost).
     step: 0,
+    clientNotes: "",
     invoices: [{ number: invoiceNumber, photo: photos.invoice }],
     photos: { receiver: photos.receiver, goods: photos.goods },
     // Old drafts captured GPS without comparing with the client's location.
@@ -108,6 +124,7 @@ export function draftHasContent(draft: Draft): boolean {
       draft.location ||
       draft.status ||
       draft.payment ||
-      draft.notes,
+      draft.notes ||
+      draft.clientNotes,
   );
 }

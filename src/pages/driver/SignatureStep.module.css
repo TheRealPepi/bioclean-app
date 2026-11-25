@@ -1,0 +1,157 @@
+.stack {
+  display: grid;
+  gap: 16px;
+}
+
+/* Always on top: the client must not hand the phone back before saving. */
+.banner {
+  display: flex;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.banner svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* What the client signs for, in as few lines as possible. */
+.summary {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.client {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.notes {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--muted);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.when {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* ① and ②. The radius is for the flash drawn when something is missing. */
+.section {
+  display: grid;
+  gap: 10px;
+  border-radius: var(--radius);
+  scroll-margin: 96px 0 120px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 0;
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.badge {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--green-900);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.badgeDone {
+  background: #15803d;
+}
+
+.stale {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.stale svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.padWrap {
+  position: relative;
+}
+
+/* Covers the pad until ① is answered, so the client can't sign first. */
+.lock {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* Inside the signature box, right above where the client signs. */
+.padHeader {
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+}

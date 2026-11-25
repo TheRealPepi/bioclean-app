@@ -108,3 +108,34 @@
 .next {
   flex: 1;
 }
+
+/* The client's screen with something still missing: the button says what,
+   and a tap takes them there, so it reads as an instruction, not as "done". */
+.next.pending,
+.next.pending:not(:disabled):hover {
+  border-color: var(--green-100);
+  background: var(--green-50);
+  color: var(--green-900);
+}
+
+/* Draws the client's eye to "Confirmar entrega" once everything is done. */
+.nudge {
+  animation: nudge 1.6s ease-in-out infinite;
+}
+
+@keyframes nudge {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(21 128 61 / 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgb(21 128 61 / 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nudge {
+    animation: none;
+    box-shadow: 0 0 0 3px rgb(21 128 61 / 0.35);
+  }
+}

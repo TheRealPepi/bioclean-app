@@ -141,6 +141,11 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
         photoIds[key] = await uploadPhoto(item.photos[key]);
         await updateOutboxItem(item.id, { photoIds });
       }
+      const signature = item.signature && { ...item.signature };
+      if (signature && !signature.imageId) {
+        signature.imageId = await uploadPhoto(signature.image);
+        await updateOutboxItem(item.id, { signature });
+      }
       await createDelivery({
         clientId: item.clientId,
         clientName: item.clientName,
@@ -158,6 +163,11 @@ export function OutboxProvider({ me, children }: { me: Me; children: ReactNode }
         payment: item.payment,
         status: item.status,
         notes: item.notes,
+        ...(item.clientNotes ? { clientNotes: item.clientNotes } : {}),
+        signature: signature && {
+          photoId: signature.imageId!,
+          signedAt: signature.signedAt,
+        },
         deliveredAt: item.deliveredAt,
         clientRequestId: item.id,
       });
