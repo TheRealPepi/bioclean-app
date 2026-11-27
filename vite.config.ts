@@ -2,6 +2,7 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
+import { APP_NAME } from "./src/lib/brand";
 
 // `npm run dev:https` serves over HTTPS on the local network so drivers' phones
 // can use the camera and GPS while testing (browsers require a secure context).
@@ -16,8 +17,8 @@ export default defineConfig(({ mode }) => ({
       // The icons in public/ are already matched by `globPatterns`.
       includeManifestIcons: false,
       manifest: {
-        name: "Bioclean Green Cozumel · Entregas",
-        short_name: "Bioclean",
+        name: `${APP_NAME} · Entregas`,
+        short_name: APP_NAME,
         description: "Registro de entregas de los choferes.",
         lang: "es",
         start_url: "/",

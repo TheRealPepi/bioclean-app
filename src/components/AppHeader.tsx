@@ -1,6 +1,7 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { NavLink } from "react-router-dom";
-import type { Me } from "../lib/me";
+import { APP_NAME } from "../lib/brand";
+import { ROLE_LABELS, type Me } from "../lib/me";
 import { useOutbox } from "../lib/OutboxProvider";
 import { useOnline } from "../lib/useOnline";
 import styles from "./AppHeader.module.css";
@@ -11,7 +12,6 @@ export function AppHeader({ me, tabs }: { me: Me; tabs?: Tab[] }) {
   const { signOut } = useAuthActions();
   const online = useOnline();
   const waiting = useOutbox()?.items.length ?? 0;
-  const roleLabel = me.role === "admin" ? "Administrador" : "Chofer";
 
   function handleSignOut() {
     // Signing out needs the server, and deliveries waiting on the phone only
@@ -36,9 +36,9 @@ export function AppHeader({ me, tabs }: { me: Me; tabs?: Tab[] }) {
       <div className={styles.inner}>
         <div className={styles.top}>
           <div>
-            <div className={styles.brand}>Bioclean Green Cozumel</div>
+            <div className={styles.brand}>{me.company.name || APP_NAME}</div>
             <div className={styles.user}>
-              {me.name.split(" ")[0]} · {roleLabel}
+              {me.name.split(" ")[0]} · {ROLE_LABELS[me.memberRole]}
             </div>
           </div>
           <button type="button" className={styles.signOut} onClick={handleSignOut}>

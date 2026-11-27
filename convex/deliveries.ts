@@ -2,15 +2,20 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type QueryCtx } from "./_generated/server";
 import { findOrCreateClient } from "./clients";
-import { displayName, requireAdmin, requireUser } from "./lib/access";
-import { LEGACY_TIME_ZONE } from "./lib/dates";
+import {
+  capabilitiesFor,
+  displayName,
+  getCompany,
+  getOwned,
+  requireOffice,
+  requireUser,
+} from "./lib/access";
 import { dueDateFor } from "./lib/due";
 import { distanceMeters, SAME_PLACE_METERS } from "./lib/geo";
-import { legacyCompanyId } from "./lib/tenancy";
 import { cleanInvoice } from "./lib/text";
 import { deliveryStatus, locationObj, locationSource, paymentType } from "./schema";
 
-/** Rows from before offline mode may not have `deliveredAt` until the backfill runs. */
+/** Rows from before offline mode may not have `deliveredAt`. */
 const deliveredAt = (d: Doc<"deliveries">) => d.deliveredAt ?? d._creationTime;
 
 export const generateUploadUrl = mutation({
@@ -21,22 +26,27 @@ export const generateUploadUrl = mutation({
   },
 });
 
-/** The latest deliveries that have this (already cleaned) factura number, newest first. */
-async function deliveriesWithInvoice(ctx: QueryCtx, number: string) {
+/**
+ * The company's latest deliveries that have this (already cleaned) factura
+ * number, newest first. Another company can use the same numbers.
+ */
+async function deliveriesWithInvoice(ctx: QueryCtx, companyId: Id<"companies">, number: string) {
   const found = new Map<Id<"deliveries">, Doc<"deliveries">>();
   const rows = await ctx.db
     .query("invoiceNumbers")
-    .withIndex("by_number", (q) => q.eq("number", number))
+    .withIndex("by_company_number", (q) => q.eq("companyId", companyId).eq("number", number))
     .order("desc")
     .take(20);
   for (const row of rows) {
-    const delivery = await ctx.db.get(row.deliveryId);
+    const delivery = await getOwned(ctx, companyId, row.deliveryId);
     if (delivery) found.set(delivery._id, delivery);
   }
   // Deliveries from before several facturas were allowed have no rows there.
   const older = await ctx.db
     .query("deliveries")
-    .withIndex("by_invoice", (q) => q.eq("invoiceNumber", number))
+    .withIndex("by_company_invoice", (q) =>
+      q.eq("companyId", companyId).eq("invoiceNumber", number),
+    )
     .order("desc")
     .take(20);
   for (const delivery of older) found.set(delivery._id, delivery);
@@ -86,14 +96,19 @@ export const create = mutation({
     clientRequestId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { user } = await requireUser(ctx);
+    const { user, companyId } = await requireUser(ctx);
 
-    // A retry of an upload whose response got lost: it's already saved.
+    // A retry of an upload whose response got lost: it's already saved. Only
+    // the driver's own upload counts, so nobody learns another delivery's id
+    // by sending its request id.
     if (args.clientRequestId) {
-      const existing = await ctx.db
+      const sameRequest = await ctx.db
         .query("deliveries")
         .withIndex("by_client_request", (q) => q.eq("clientRequestId", args.clientRequestId))
-        .first();
+        .take(20);
+      const existing = sameRequest.find(
+        (d) => d.companyId === companyId && d.driverId === user._id,
+      );
       if (existing) return existing._id;
     }
 
@@ -122,14 +137,18 @@ export const create = mutation({
       args.goodsPhotoId,
       ...(args.signature ? [args.signature.photoId] : []),
     ];
+    // Files aren't tied to a company: their ids can't be guessed, and no query
+    // gives out the id of a file (only its URL, to whoever can open the delivery).
     for (const photoId of photoIds) {
       if ((await ctx.db.system.get(photoId)) === null) {
         throw new ConvexError("Una de las fotos no se subió correctamente. Inténtalo de nuevo.");
       }
     }
 
-    const selected = args.clientId ? await ctx.db.get(args.clientId) : null;
-    const client = selected ?? (await findOrCreateClient(ctx, args.clientName));
+    // A client that isn't this company's is treated like one that was deleted:
+    // the delivery already happened, so it's saved under the name instead.
+    const selected = await getOwned(ctx, companyId, args.clientId);
+    const client = selected ?? (await findOrCreateClient(ctx, companyId, args.clientName));
 
     // A repeated factura is never rejected: the delivery already happened, and
     // the wizard can't ask without signal. It's marked for the office instead.
@@ -137,7 +156,7 @@ export const create = mutation({
     // for another client is always a possible duplicate.
     const invoices: NonNullable<Doc<"deliveries">["invoices"]> = [];
     for (const { number, photoId, followUp } of cleaned) {
-      const earlier = await deliveriesWithInvoice(ctx, number);
+      const earlier = await deliveriesWithInvoice(ctx, companyId, number);
       const sameClient = earlier.find((d) => d.clientId === client._id);
       const previous = sameClient ?? earlier[0];
       const isFollowUp = followUp === true && (sameClient !== undefined || !previous);
@@ -154,7 +173,7 @@ export const create = mutation({
     }
 
     // Archived vehicles are accepted: it may have been chosen offline before.
-    const vehicle = args.vehicleId ? await ctx.db.get(args.vehicleId) : null;
+    const vehicle = await getOwned(ctx, companyId, args.vehicleId);
 
     // The server decides the final source from the client's saved location.
     let source: Doc<"deliveries">["locationSource"];
@@ -171,7 +190,6 @@ export const create = mutation({
     const now = Date.now();
     const when = Math.min(args.deliveredAt ?? now, now);
 
-    const companyId = await legacyCompanyId(ctx);
     const id = await ctx.db.insert("deliveries", {
       companyId,
       clientId: client._id,
@@ -213,12 +231,12 @@ export const create = mutation({
   },
 });
 
-/** Lets the admin mark a "credito" delivery as paid (or undo it). */
+/** Lets the office mark a "credito" delivery as paid (or undo it). */
 export const setPayment = mutation({
   args: { id: v.id("deliveries"), payment: paymentType },
   handler: async (ctx, { id, payment }) => {
-    await requireAdmin(ctx);
-    const delivery = await ctx.db.get(id);
+    const { companyId } = await requireOffice(ctx);
+    const delivery = await getOwned(ctx, companyId, id);
     if (!delivery) throw new ConvexError("La entrega ya no existe.");
     if (delivery.payment === payment) return;
     await ctx.db.patch(id, {
@@ -229,21 +247,27 @@ export const setPayment = mutation({
 });
 
 /**
- * Run once right after deploying offline mode, so older deliveries show up in
- * the date-filtered lists: `npx convex run deliveries:backfillDeliveredAt`
- * (add `--prod` for production). Safe to run again.
+ * Deliveries from before offline mode have no `deliveredAt`, and the lists by
+ * date leave them out until this gives them one:
+ * `npx convex run deliveries:backfillDeliveredAt` (add `--prod` for
+ * production). Safe to run again.
  */
 export const backfillDeliveredAt = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const missing = await ctx.db
-      .query("deliveries")
-      .withIndex("by_delivered", (q) => q.eq("deliveredAt", undefined))
-      .take(2000);
-    for (const d of missing) {
-      await ctx.db.patch(d._id, { deliveredAt: d._creationTime });
+    let updated = 0;
+    // tenant-ok: one-off maintenance, the same for every company.
+    for (const company of await ctx.db.query("companies").collect()) {
+      const missing = await ctx.db
+        .query("deliveries")
+        .withIndex("by_company_delivered", (q) =>
+          q.eq("companyId", company._id).eq("deliveredAt", undefined),
+        )
+        .take(2000);
+      for (const d of missing) await ctx.db.patch(d._id, { deliveredAt: d._creationTime });
+      updated += missing.length;
     }
-    return { updated: missing.length, done: missing.length < 2000 };
+    return { updated };
   },
 });
 
@@ -251,10 +275,10 @@ export const backfillDeliveredAt = internalMutation({
 export const findByInvoice = query({
   args: { invoiceNumber: v.string() },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const { companyId } = await requireUser(ctx);
     const invoiceNumber = cleanInvoice(args.invoiceNumber);
     if (!invoiceNumber) return null;
-    const [existing] = await deliveriesWithInvoice(ctx, invoiceNumber);
+    const [existing] = await deliveriesWithInvoice(ctx, companyId, invoiceNumber);
     if (!existing) return null;
     return { clientName: existing.clientName, createdAt: deliveredAt(existing) };
   },
@@ -262,18 +286,18 @@ export const findByInvoice = query({
 
 /**
  * Used by the wizard to ask whether a factura that was already registered (by
- * any driver) is a follow-up. One entry per number; `earlier` has the latest
+ * any driver of the company) is a follow-up. One entry per number; `earlier` has the latest
  * deliveries with it, newest first (empty when the number is new). The wizard
  * picks the one for the same client, since only that one can be followed up.
  */
 export const findByInvoices = query({
   args: { numbers: v.array(v.string()) },
   handler: async (ctx, args) => {
-    await requireUser(ctx);
+    const { companyId } = await requireUser(ctx);
     const numbers = [...new Set(args.numbers.map(cleanInvoice).filter(Boolean))].slice(0, 50);
     return await Promise.all(
       numbers.map(async (number) => {
-        const existing = await deliveriesWithInvoice(ctx, number);
+        const existing = await deliveriesWithInvoice(ctx, companyId, number);
         return {
           number,
           earlier: existing.map((d) => ({
@@ -293,10 +317,12 @@ export const findByInvoices = query({
 export const listMine = query({
   args: { since: v.number() },
   handler: async (ctx, { since }) => {
-    const { user } = await requireUser(ctx);
+    const { user, companyId } = await requireUser(ctx);
     const deliveries = await ctx.db
       .query("deliveries")
-      .withIndex("by_driver", (q) => q.eq("driverId", user._id).gte("deliveredAt", since))
+      .withIndex("by_company_driver", (q) =>
+        q.eq("companyId", companyId).eq("driverId", user._id).gte("deliveredAt", since),
+      )
       .order("desc")
       .collect();
     return deliveries.map((d) => ({
@@ -309,14 +335,16 @@ export const listMine = query({
   },
 });
 
-/** Admin table: every delivery made in [from, to), newest first. */
+/** Office table: every delivery of the company made in [from, to), newest first. */
 export const list = query({
   args: { from: v.number(), to: v.number() },
   handler: async (ctx, { from, to }) => {
-    await requireAdmin(ctx);
+    const { companyId } = await requireOffice(ctx);
     const deliveries = await ctx.db
       .query("deliveries")
-      .withIndex("by_delivered", (q) => q.gte("deliveredAt", from).lt("deliveredAt", to))
+      .withIndex("by_company_delivered", (q) =>
+        q.eq("companyId", companyId).gte("deliveredAt", from).lt("deliveredAt", to),
+      )
       .order("desc")
       .take(5000);
     return deliveries.map((d) => ({
@@ -342,12 +370,14 @@ export const list = query({
 export const get = query({
   args: { id: v.string() },
   handler: async (ctx, args) => {
-    const { user, role } = await requireUser(ctx);
-    const id = ctx.db.normalizeId("deliveries", args.id);
-    const delivery = id ? await ctx.db.get(id) : null;
-    if (!delivery || (role !== "admin" && delivery.driverId !== user._id)) {
+    const { user, role, companyId } = await requireUser(ctx);
+    // Still called `isAdmin` in the result, for app versions from before the office role.
+    const isAdmin = capabilitiesFor(role).includes("office");
+    const delivery = await getOwned(ctx, companyId, ctx.db.normalizeId("deliveries", args.id));
+    if (!delivery || (!isAdmin && delivery.driverId !== user._id)) {
       return null;
     }
+    const company = await getCompany(ctx, companyId);
     const url = (storageId: Id<"_storage">) => ctx.storage.getUrl(storageId);
     const invoices: NonNullable<Doc<"deliveries">["invoices"]> =
       delivery.invoices ??
@@ -365,17 +395,18 @@ export const get = query({
     } = delivery;
 
     // Payment deadline and reminders are for the office only.
-    const isAdmin = role === "admin";
     let dueDate: string | null = null;
     if (isAdmin && delivery.payment === "credito") {
-      const client = await ctx.db.get(delivery.clientId);
+      const client = await getOwned(ctx, companyId, delivery.clientId);
       if (client?.creditDays) {
-        dueDate = dueDateFor(deliveredAt(delivery), client.creditDays, LEGACY_TIME_ZONE);
+        dueDate = dueDateFor(deliveredAt(delivery), client.creditDays, company.timeZone);
       }
     }
 
     return {
       ...rest,
+      // Printed on the PDF.
+      companyName: company.name,
       deliveredAt: deliveredAt(delivery),
       vehicleName: delivery.vehicleName ?? null,
       payment: delivery.payment ?? null,
@@ -393,7 +424,7 @@ export const get = query({
         : null,
       invoices: await Promise.all(
         invoices.map(async (i) => {
-          const previous = i.previousDeliveryId ? await ctx.db.get(i.previousDeliveryId) : null;
+          const previous = await getOwned(ctx, companyId, i.previousDeliveryId);
           return {
             number: i.number,
             url: await url(i.photoId),

@@ -1,5 +1,6 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
+import { APP_NAME } from "../../lib/brand";
 import styles from "./Login.module.css";
 
 export function GoogleLogo() {
@@ -23,7 +24,7 @@ export function LoginPage() {
         <div className={styles.logo} aria-hidden="true">
           <img src="/favicon.svg" alt="" />
         </div>
-        <h1 className={styles.title}>Bioclean Green Cozumel</h1>
+        <h1 className={styles.title}>{APP_NAME}</h1>
         <p className={styles.subtitle}>Registro de entregas</p>
         <button
           type="button"

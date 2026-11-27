@@ -13,10 +13,11 @@ test("client names that differ only by accents, punctuation or spacing share a k
   expect(normalizeKey(" .,- ")).toBe("");
 });
 
-test("a 10-digit WhatsApp number is taken as Mexican", () => {
-  expect(cleanPhone("987 123 4567")).toBe("529871234567");
-  expect(cleanPhone("+52 (987) 123-4567")).toBe("529871234567");
-  expect(cleanPhone("+1 305 555 0100")).toBe("13055550100");
+test("a 10-digit WhatsApp number is taken as one of the company's country", () => {
+  expect(cleanPhone("987 123 4567", "52")).toBe("529871234567");
+  expect(cleanPhone("+52 (987) 123-4567", "52")).toBe("529871234567");
+  expect(cleanPhone("+1 305 555 0100", "52")).toBe("13055550100");
+  expect(cleanPhone("305 555 0100", "1")).toBe("13055550100");
 });
 
 test("a WhatsApp number needs a country code and enough digits", () => {

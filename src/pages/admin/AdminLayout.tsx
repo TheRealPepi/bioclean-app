@@ -11,9 +11,12 @@ const TABS = [
 ];
 
 export function AdminLayout({ me }: { me: Me }) {
+  // Users and settings are only for whoever manages the company.
+  const manages = me.can.includes("manageUsers") || me.can.includes("manageCompany");
+  const tabs = manages ? [...TABS, { to: "/configuracion", label: "Configuración" }] : TABS;
   return (
     <>
-      <AppHeader me={me} tabs={TABS} />
+      <AppHeader me={me} tabs={tabs} />
       <main>
         <Outlet />
       </main>

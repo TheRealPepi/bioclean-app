@@ -94,6 +94,7 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
   const mapSide = useRef<HTMLDivElement>(null);
 
   const base = settings?.base ?? null;
+  const searchBounds = settings?.serviceArea?.bounds;
   const baseKey = base ? `${base.lat},${base.lng}` : "";
 
   // Only clients with a location can be a stop: the one set for this route, or their saved one.
@@ -595,7 +596,7 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
                     locatingClient.location &&
                     " La ubicación guardada del cliente no cambia."}
                 </span>
-                <AddressSearch onSelect={proposePlace} autoFocus={!draft} />
+                <AddressSearch onSelect={proposePlace} autoFocus={!draft} bounds={searchBounds} />
                 <div className={styles.checkRow}>
                   <label className={styles.check}>
                     <input
@@ -683,7 +684,13 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
                     </>
                   )}
                 </span>
-                {hasMap && <AddressSearch onSelect={proposePlace} autoFocus={editingBase} />}
+                {hasMap && (
+                  <AddressSearch
+                    onSelect={proposePlace}
+                    autoFocus={editingBase}
+                    bounds={searchBounds}
+                  />
+                )}
                 <div className={styles.baseButtons}>
                   {hasMap && (
                     <button
@@ -724,6 +731,7 @@ function RouteBuilder({ template, routeId }: { template?: RouteTemplate; routeId
 
           <div className={`card ${styles.mapCard}`}>
             <RouteMap
+              defaultCenter={settings.serviceArea?.center}
               base={base}
               stops={mapStops}
               others={mapOthers}

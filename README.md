@@ -1,9 +1,9 @@
-# Bioclean Green Cozumel · Entregas
+# Deliverado · Entregas
 
-Web app para registrar las entregas de los choferes y consultarlas desde la oficina.
+Web app para registrar las entregas de los choferes y consultarlas desde la oficina. La usan varias empresas en la misma instalación: cada una ve solo lo suyo y administra a sus propios usuarios (ver [Empresas, usuarios y roles](#empresas-usuarios-y-roles)).
 
 - **Choferes (teléfono):** botón **+ Nueva entrega** → asistente paso a paso: cliente, vehículo, facturas (número y foto de cada una; botón **Agregar otra factura** si el cliente pide varias), foto de quien recibe, foto de la mercancía, ubicación, estatus, pago (**Pagado** o **Crédito**) y anotaciones (obligatorias si el estatus no es "Entrega exitosa"). En el paso de ubicación se muestra la ubicación guardada del cliente: el chofer toca **Continuar con esta ubicación** o **Modificar ubicación para esta entrega** (toma el GPS; solo cambia esa entrega, no la ubicación guardada del cliente). Ven sus entregas del día. Si se cierra el navegador o se va la señal, el avance (fotos incluidas) se guarda en el teléfono y pueden continuar.
-- **Administrador (computadora):** tabla de entregas con filtros por fecha, chofer, cliente/factura y estatus; exportación a Excel (CSV); detalle de cada entrega con fotos y mapa; **Descargar PDF** del comprobante para adjuntarlo a un correo. Filtro por pago (pagado/crédito). Pestaña **Rutas** para planear el recorrido del día de un chofer (ver [Rutas](#rutas)). Pestañas para ver choferes, renombrar/fusionar clientes duplicados (y quitar la ubicación guardada de un cliente que se mudó) y agregar, renombrar o eliminar **Vehículos**. En **Clientes → Recordatorios…** se configuran los avisos de pago por correo o WhatsApp de las entregas a crédito, y en el detalle de una entrega a crédito está el botón **Marcar como pagado** (ver [Recordatorios de pago](#recordatorios-de-pago)).
+- **Oficina (computadora):** tabla de entregas con filtros por fecha, chofer, cliente/factura y estatus; exportación a Excel (CSV); detalle de cada entrega con fotos y mapa; **Descargar PDF** del comprobante para adjuntarlo a un correo. Filtro por pago (pagado/crédito). Pestaña **Rutas** para planear el recorrido del día de un chofer (ver [Rutas](#rutas)). Pestañas para ver choferes, renombrar/fusionar clientes duplicados (y quitar la ubicación guardada de un cliente que se mudó) y agregar, renombrar o eliminar **Vehículos**. En **Clientes → Recordatorios…** se configuran los avisos de pago por correo o WhatsApp de las entregas a crédito, y en el detalle de una entrega a crédito está el botón **Marcar como pagado** (ver [Recordatorios de pago](#recordatorios-de-pago)). El dueño y los administradores tienen además la pestaña **Configuración**: datos de la empresa, usuarios y recordatorios.
 
 Stack: Vite + React + TypeScript, CSS Modules, Convex (base de datos, fotos y login con Google vía Convex Auth).
 
@@ -42,14 +42,11 @@ Requiere Node.js 20 o más reciente.
    ```sh
    npx convex env set AUTH_GOOGLE_ID "<client id>"
    npx convex env set AUTH_GOOGLE_SECRET "<client secret>"
-   npx convex env set ADMIN_EMAILS "tu-correo@gmail.com"
-   npx convex env set ALLOWED_EMAILS "chofer1@gmail.com, chofer2@gmail.com"
+   npx convex env set COMPANY_CREATOR_EMAILS "tu-correo@gmail.com"
    ```
 
-   - `ADMIN_EMAILS`: ven la vista de administrador.
-   - `ALLOWED_EMAILS`: choferes.
-   - Separa varios correos con comas. Los cambios aplican de inmediato: quitar un correo le quita el acceso sin tener que volver a publicar la app.
-   - Cualquier cuenta de Google puede iniciar sesión, pero si su correo no está en ninguna lista solo verá el mensaje "Tu correo no tiene acceso" y no podrá leer ni guardar nada.
+   - `COMPANY_CREATOR_EMAILS`: los correos que pueden **crear una empresa**. Separa varios con comas. Al entrar con uno de ellos (y sin pertenecer todavía a una empresa) la app muestra el formulario *Crea tu empresa*; quien la crea queda como su dueño y agrega al resto desde **Configuración → Usuarios**.
+   - Cualquier cuenta de Google puede iniciar sesión, pero si su correo no es usuario de ninguna empresa ni está en esa lista solo verá el mensaje "Tu correo no tiene acceso" y no podrá leer ni guardar nada.
 
 6. **Arrancar la app** en otra terminal:
 
@@ -71,7 +68,7 @@ Abre en el teléfono la dirección `https://<ip-de-tu-computadora>:5173` que mue
 
 ## Publicar
 
-1. Despliega el backend: `npx convex deploy` (crea el deployment de producción; repite el paso 3 y el 5 con `--prod`, por ejemplo `npx convex env set --prod ADMIN_EMAILS ...`).
+1. Despliega el backend: `npx convex deploy` (crea el deployment de producción; repite el paso 3 y el 5 con `--prod`, por ejemplo `npx convex env set --prod COMPANY_CREATOR_EMAILS ...`).
 2. Publica el frontend en Vercel o Netlify con el comando de build
    `npx convex deploy --cmd 'npm run build'` y carpeta de salida `dist`
    (define `CONVEX_DEPLOY_KEY` en el hosting; ver la [guía de Convex](https://docs.convex.dev/production/hosting/)).
@@ -149,121 +146,143 @@ El mapa y el buscador de direcciones de **Nueva ruta** usan Google Maps. Sin la 
 Cada cliente puede recibir avisos por correo, por WhatsApp o por ambos de sus entregas a **crédito** que siguen sin pagar: uno **una semana antes** de la fecha límite de pago y otro **el día que vence**.
 
 - **Fecha límite** = día de la entrega + los *días de crédito* del cliente. Si cambias los días de crédito de un cliente, cambia la fecha límite de sus entregas pendientes.
-- **Configurar un cliente:** pestaña **Clientes → Recordatorios…**: días de crédito, correo, WhatsApp y por dónde avisarle. **Enviar prueba** manda un mensaje de ejemplo a lo guardado, y ahí mismo se ven los últimos avisos enviados (y el motivo si alguno falló). Estos datos solo los ve el administrador; no se guardan en los teléfonos de los choferes.
+- **Configurar un cliente:** pestaña **Clientes → Recordatorios…**: días de crédito, correo, WhatsApp y por dónde avisarle. **Enviar prueba** manda un mensaje de ejemplo a lo guardado, y ahí mismo se ven los últimos avisos enviados (y el motivo si alguno falló). Estos datos solo los ve la oficina; no se guardan en los teléfonos de los choferes.
 - **Marcar como pagado:** en el detalle de la entrega. Una entrega pagada ya no genera avisos.
 - **Un mensaje por cliente:** las facturas de un cliente que vencen el mismo día van juntas en un solo mensaje. Los mensajes llevan los números de factura y la fecha límite (la app no guarda importes).
-- **Cuándo se envían:** todos los días a las 9:00 a.m. de Cozumel (`convex/crons.ts`). Si un envío falla, se reintenta al día siguiente (el aviso del día de vencimiento, hasta 3 días después).
+- **Cuándo se envían:** todos los días a partir de las 9:00 a.m. en la zona horaria de cada empresa (una tarea revisa cada hora a qué empresas les toca; `convex/crons.ts`). Si un envío falla, se reintenta al día siguiente (el aviso del día de vencimiento, hasta 3 días después).
 - Con 7 días de crédito o menos solo se envía el aviso del día de vencimiento.
 
 ### Activarlos
 
-Los avisos están **apagados** hasta definir `REMINDERS_START_DATE`. Solo las entregas hechas a partir de ese día generan avisos, así que las entregas a crédito anteriores nunca los envían:
+Cada empresa los enciende en **Configuración → Recordatorios**, eligiendo desde qué día de entrega se avisa. Solo las entregas hechas a partir de ese día generan avisos, así que las entregas a crédito anteriores nunca los envían. Sin fecha, están apagados.
+
+Para ver qué se enviaría sin enviar nada (y con otra fecha, para probar). `companies:list` da el id de cada empresa:
 
 ```sh
-npx convex env set REMINDERS_START_DATE "2026-12-01"          # desarrollo
-npx convex env set --prod REMINDERS_START_DATE "2026-12-01"   # producción
-```
-
-Para apagarlos: `npx convex env remove REMINDERS_START_DATE`.
-
-Para ver qué se enviaría sin enviar nada (y con otra fecha, para probar):
-
-```sh
-npx convex run reminders:run '{"dryRun": true}'
-npx convex run reminders:run '{"dryRun": true, "today": "2026-12-15"}'
+npx convex run companies:list
+npx convex run reminders:run '{"companyId": "<id>", "dryRun": true}'
+npx convex run reminders:run '{"companyId": "<id>", "dryRun": true, "today": "2026-12-15"}'
 ```
 
 ### Correo (Resend)
 
-1. Crea una cuenta en [Resend](https://resend.com), agrega tu dominio y verifícalo con los registros DNS que indica.
-2. Crea una API key y configura:
+Todas las empresas envían con la misma cuenta de [Resend](https://resend.com). Quien opera la instalación la configura una vez:
 
-   ```sh
-   npx convex env set RESEND_API_KEY "re_..."
-   npx convex env set REMINDER_FROM_EMAIL "Bioclean Green Cozumel <cobranza@tu-dominio.com>"
-   npx convex env set REMINDER_REPLY_TO "oficina@tu-dominio.com"   # opcional
-   ```
+```sh
+npx convex env set RESEND_API_KEY "re_..."
+# Dirección compartida, en un dominio verificado en Resend, para las empresas sin dominio propio.
+npx convex env set REMINDER_DEFAULT_FROM_EMAIL "avisos@tu-dominio.com"
+```
+
+- **Empresa sin dominio propio:** sus correos salen de esa dirección compartida, con el nombre de la empresa. Tiene que escribir un *correo de respuesta* en **Configuración → Recordatorios**, que es a donde llega lo que contesten sus clientes.
+- **Empresa con dominio propio:** verifica su dominio en Resend (registros DNS) y actívalo. Desde entonces elige el nombre y lo que va antes de la arroba:
+
+  ```sh
+  npx convex run companies:setSenderDomain '{"companyId": "<id>", "senderDomain": "empresa.com"}'
+  ```
+
+  El dominio nunca se escribe desde la app: con una sola cuenta de Resend, una empresa podría enviar a nombre del dominio de otra.
+- **Enviarme una prueba** (en esa misma pantalla) manda un recordatorio de ejemplo al correo del administrador y muestra el error de Resend si algo falla.
 
 ### WhatsApp (WhatsApp Cloud API de Meta)
 
-WhatsApp solo permite que una empresa inicie una conversación con **plantillas aprobadas por Meta**.
+Cada empresa usa su propia cuenta de WhatsApp Business. WhatsApp solo permite que una empresa inicie una conversación con **plantillas aprobadas por Meta**.
 
-1. En [Meta for Developers](https://developers.facebook.com/) crea una app de tipo *Business* con el producto **WhatsApp**, ligada a tu portafolio de negocio, y registra el número desde el que se enviarán los avisos.
+1. En [Meta for Developers](https://developers.facebook.com/) crea una app de tipo *Business* con el producto **WhatsApp**, ligada al portafolio de negocio de la empresa, y registra el número desde el que se enviarán los avisos.
 2. En *WhatsApp Manager → Plantillas de mensajes* crea estas dos plantillas, categoría **Utilidad**, idioma **Español (MEX)**, con tres variables en el cuerpo (nombre del cliente, facturas y fecha):
 
    - `recordatorio_pago_proximo`
 
-     > Hola, {{1}}. Le recordamos que el pago de la(s) factura(s) {{2}} vence el {{3}}. Si ya realizó el pago, por favor haga caso omiso de este mensaje. Gracias. Bioclean Green Cozumel
+     > Hola, {{1}}. Le recordamos que el pago de la(s) factura(s) {{2}} vence el {{3}}. Si ya realizó el pago, por favor haga caso omiso de este mensaje. Gracias. *Nombre de la empresa*
 
    - `recordatorio_pago_vencimiento`
 
-     > Hola, {{1}}. Le recordamos que la(s) factura(s) {{2}} tiene(n) como fecha límite de pago el {{3}}. Si ya realizó el pago, por favor haga caso omiso de este mensaje. Gracias. Bioclean Green Cozumel
+     > Hola, {{1}}. Le recordamos que la(s) factura(s) {{2}} tiene(n) como fecha límite de pago el {{3}}. Si ya realizó el pago, por favor haga caso omiso de este mensaje. Gracias. *Nombre de la empresa*
 
-3. Crea un *usuario del sistema* con un token permanente con permiso `whatsapp_business_messaging` y configura:
+3. Crea un *usuario del sistema* con un token permanente con permiso `whatsapp_business_messaging`.
+4. En **Configuración → Recordatorios → WhatsApp** escribe el *identificador del número de teléfono* y guarda el token. Si las plantillas tienen otros nombres o idioma, escríbelos ahí (por defecto, los de arriba y `es_MX`). El token se guarda aparte y la app nunca lo vuelve a mostrar.
+5. Los clientes deben haber aceptado recibir mensajes de la empresa por WhatsApp (requisito de Meta).
 
-   ```sh
-   npx convex env set WHATSAPP_TOKEN "<token>"
-   npx convex env set WHATSAPP_PHONE_NUMBER_ID "<identificador del número>"
-   ```
-
-   Opcionales, si usas otros nombres o versión: `WHATSAPP_TEMPLATE_PROXIMO`, `WHATSAPP_TEMPLATE_VENCIMIENTO`, `WHATSAPP_TEMPLATE_LANG` (por defecto `es_MX`) y `WHATSAPP_API_VERSION` (por defecto `v26.0`).
-
-4. Los clientes deben haber aceptado recibir mensajes de la empresa por WhatsApp (requisito de Meta).
-
-Repite las variables con `--prod` para producción. Prueba cada cliente con **Enviar prueba** antes de activar los avisos.
+`WHATSAPP_API_VERSION` (por defecto `v26.0`) es la única variable de WhatsApp que queda en Convex, y vale para todas las empresas. Prueba cada cliente con **Enviar prueba** antes de activar los avisos.
 
 **Íconos:** se generan desde `public/app-icon.svg` con `npx pwa-assets-generator`.
 
-## Varias empresas (preparación)
+## Empresas, usuarios y roles
 
-La app se está preparando para que la usen varias empresas, cada una con sus propios usuarios. Se publica en dos pasos para que nadie pierda el acceso en el cambio. **Este es el primero y no cambia nada de lo que ven los usuarios:** el acceso sigue saliendo de `ADMIN_EMAILS` y `ALLOWED_EMAILS`. Solo crea la primera empresa en la base de datos y le asigna todo lo que ya existe.
+- **Una empresa por correo.** Un correo es usuario de una sola empresa. Todo lo que se registra (clientes, entregas, facturas, vehículos, rutas, recordatorios) pertenece a la empresa de quien lo registró, y ninguna función devuelve ni cambia datos de otra.
+- **Crear una empresa:** solo los correos de `COMPANY_CREATOR_EMAILS` (ver [Configuración inicial](#configuración-inicial)). Para dar de alta a un cliente nuevo, agrega su correo a esa variable y pídele que entre a la app.
+- **Usuarios:** en **Configuración → Usuarios** se agrega el correo de Google de cada persona con su rol. No se envía invitación: la persona tiene acceso en cuanto entra con esa cuenta, y mientras tanto aparece como *Aún no ha entrado*. Cambiar el rol o quitar a alguien aplica en su siguiente acción.
 
-Después de publicar esta versión, corre en este orden (agrega `--prod` para producción; todo se puede repetir sin problema):
+  | Rol | Puede |
+  | --- | --- |
+  | **Dueño** | Todo. Es quien creó la empresa; no se puede quitar ni cambiar de rol. |
+  | **Administrador** | Todo: el trabajo diario, los usuarios y la configuración de la empresa. |
+  | **Oficina** | El trabajo diario: entregas, rutas, clientes, vehículos y pagos. No ve Configuración. |
+  | **Chofer** | Registrar entregas desde su teléfono y ver sus rutas. |
+
+- **Configuración → Empresa:** nombre (aparece en la app, en los PDF y en los recordatorios), lema, zona horaria (los días y las fechas límite de pago se cuentan en ella), clave de país de los teléfonos y zona de servicio (la búsqueda de direcciones al armar rutas se limita a ella).
+- **Para quien opera la instalación** (comandos internos, no están en la app):
+
+  ```sh
+  npx convex run companies:list                                                     # empresas, dueños e ids
+  npx convex run companies:setSenderDomain '{"companyId": "<id>", "senderDomain": "empresa.com"}'
+  npx convex run members:transferOwnership '{"companyId": "<id>", "email": "nuevo-dueno@gmail.com"}'
+  ```
+
+### Publicar esta versión sobre la anterior
+
+La versión anterior (la de "preparación") dejó creada la primera empresa y le asignó todos los datos, pero el acceso seguía saliendo de `ADMIN_EMAILS` y `ALLOWED_EMAILS`. Con esta versión el acceso sale de los usuarios de cada empresa. **Antes de publicarla**, todavía con la versión anterior en producción:
 
 ```sh
-# 0. Respaldo, antes de tocar nada.
+# 1. Respaldo.
 npx convex export --prod --path respaldo.zip
 
-# 1. Ver qué haría, sin guardar nada. El dueño tiene que estar en ADMIN_EMAILS.
-npx convex run migrations:backfillCompany '{"ownerEmail": "tu-correo@gmail.com", "dryRun": true}'
+# 2. Deja de cambiar ADMIN_EMAILS y ALLOWED_EMAILS, y copia por última vez las listas
+#    (y la configuración de recordatorios) a la empresa.
+npx convex run --prod migrations:backfillCompany '{"ownerEmail": "tu-correo@gmail.com"}'
 
-# 2. Crear la empresa con sus miembros (los correos de las dos listas).
-npx convex run migrations:backfillCompany '{"ownerEmail": "tu-correo@gmail.com"}'
+# 3. Tiene que responder "ready": true. Si no, corre migrations:stampRows y vuelve a revisar.
+npx convex run --prod migrations:status
 
-# 3. Asignarle las entregas, clientes, vehículos, rutas y recordatorios anteriores.
-npx convex run migrations:stampRows
-
-# 4. Revisar. Cuando responde "ready": true, está listo para el segundo paso.
-npx convex run migrations:status
+# 4. Quién puede crear empresas, y la dirección compartida de los recordatorios.
+npx convex env set --prod COMPANY_CREATOR_EMAILS "tu-correo@gmail.com"
+npx convex env set --prod REMINDER_DEFAULT_FROM_EMAIL "avisos@tu-dominio.com"
 ```
 
-- `stampRows` avanza por lotes y sigue solo hasta terminar; `status` dice cuántas filas faltan en cada tabla.
-- Mientras el acceso venga de las variables, **cada vez que cambies `ADMIN_EMAILS` o `ALLOWED_EMAILS` vuelve a correr el paso 2**: deja a los miembros exactamente igual que las listas (y copia de nuevo la configuración de recordatorios). `status` avisa si no coinciden.
-- El paso 2 también copia a la empresa la base de las rutas y la configuración de recordatorios (`REMINDER_*`, `WHATSAPP_*`). No borres esas variables todavía.
+Luego publica. Si alguna fila se quedó sin empresa, Convex rechaza la publicación y producción sigue en la versión anterior, sin cambios. Después de publicar:
+
+- Entra como dueño, como alguien de oficina y como chofer, y revisa **Configuración → Usuarios** y **Recordatorios** (el remitente de la primera empresa quedó con el dominio que tenía `REMINDER_FROM_EMAIL`).
+- No borres todavía `ADMIN_EMAILS`, `ALLOWED_EMAILS`, `REMINDERS_START_DATE`, `REMINDER_FROM_EMAIL`, `REMINDER_REPLY_TO` ni las `WHATSAPP_*`: ya no se leen, pero permiten volver a la versión anterior. Volver solo es seguro **mientras exista una sola empresa**, así que espera unos días de uso normal antes de crear la segunda. Después se pueden borrar.
+- Los teléfonos de los choferes no necesitan nada: la app instalada se actualiza sola y conserva sus entregas pendientes de subir.
 
 ## Notas
 
-- **Zona horaria:** las fechas se muestran y filtran en hora de Cozumel (UTC-5 todo el año).
+- **Zona horaria:** las fechas se muestran y filtran en la zona horaria de la empresa (**Configuración → Empresa**), esté donde esté el teléfono o la computadora.
 - **Fotos:** se reducen en el teléfono (JPEG) antes de subirlas, para que suban rápido con datos móviles y ocupen poco espacio: la factura a máx. 1600 px, para que se lean el número y la firma; las de quien recibe y de la mercancía a máx. 1280 px. Los valores están en `PHOTO_PRESETS` (`src/lib/image.ts`).
 - **Clientes:** si un chofer escribe un cliente que no existe, se crea automáticamente. Mayúsculas, acentos, puntos y espacios extra se ignoran al comparar ("Hotel Casa México." = "HOTEL CASA MEXICO"). Si aun así se crean duplicados, únelos en **Clientes → Fusionar**.
 - **Factura repetida:** si un número de factura ya está en otra entrega del mismo cliente (de cualquier chofer), el asistente pregunta si es un **seguimiento** de esa entrega. Con "Sí" el chofer continúa y la entrega queda marcada como *Seguimiento*; con "No" no puede continuar hasta corregir el número o quitar la factura, para no duplicar la entrega. Si la factura ya está registrada para **otro cliente** no hay seguimiento posible: el asistente no deja continuar hasta corregir el número o el cliente. Sin señal no se puede consultar: la entrega se guarda y, al subirse, queda marcada como *Posible duplicado* para que la oficina la revise (lo mismo si dos choferes registran la misma factura casi al mismo tiempo). Ambas marcas se ven en la lista de entregas, en el detalle y en el CSV.
 - **Ubicación del cliente:** la primera entrega de un cliente guarda su ubicación. En las siguientes, si el chofer la modifica a más de 75 m, la entrega queda marcada como *Ubicación modificada en esta entrega*. Al continuar con la ubicación guardada, la app toma el GPS del chofer en segundo plano como comprobante (se ve en el detalle de la entrega).
-- **Pago:** una entrega a crédito se marca como pagada desde su detalle (solo el administrador). Las entregas anteriores a esta función conservan lo que registró el chofer.
+- **Pago:** una entrega a crédito se marca como pagada desde su detalle (solo la oficina). Las entregas anteriores a esta función conservan lo que registró el chofer.
 - **Vehículos:** la lista se guarda en el teléfono como la de clientes, así que funciona sin señal. Eliminar un vehículo solo lo oculta para los choferes; las entregas anteriores lo conservan y se puede restaurar.
 
 ## Estructura
 
 ```
 convex/            Backend: esquema, funciones y reglas de acceso
-  lib/access.ts    Roles a partir de ADMIN_EMAILS / ALLOWED_EMAILS
-  migrations.ts    Crea la primera empresa y le asigna los datos anteriores
+  lib/access.ts    Quién puede qué: roles, permisos y a qué empresa pertenece cada fila
+  companies.ts     Crear una empresa y su configuración
+  members.ts       Usuarios de una empresa y sus roles
+  lib/sender.ts    Remitente de los correos de cada empresa
+  isolation.test.ts, tenancy.static.test.ts  Que una empresa nunca vea ni cambie lo de otra
   reminders.ts     Recordatorios de pago (correo y WhatsApp)
   lib/reminderEmail.ts  Diseño (HTML) del correo de recordatorio
-  crons.ts         Tareas diarias: envía los recordatorios y borra rutas vencidas
+  crons.ts         Tareas programadas: envía los recordatorios y borra rutas vencidas
   routes.ts        Rutas planeadas por la oficina
   lib/due.ts       Fecha límite de pago y qué aviso toca cada día
 src/
   pages/admin/     Entregas, Rutas, Choferes, Clientes, Vehículos
+  pages/admin/settings/  Configuración: Empresa, Usuarios, Recordatorios
+  pages/login/     Entrar, sin acceso y crear empresa
   components/RouteMap.tsx  Mapa de la ruta (Google Maps)
   lib/routeOrder.ts  Orden de las paradas de una ruta
   lib/geocode.ts   Búsqueda de direcciones (Google Places) para fijar la base

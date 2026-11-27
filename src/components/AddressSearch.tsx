@@ -1,5 +1,11 @@
 import { useEffect, useId, useState } from "react";
-import { MIN_SEARCH_LENGTH, resolvePlace, searchPlaces, type Place } from "../lib/geocode";
+import {
+  MIN_SEARCH_LENGTH,
+  resolvePlace,
+  searchPlaces,
+  type Place,
+  type SearchBounds,
+} from "../lib/geocode";
 import styles from "./AddressSearch.module.css";
 import { PinIcon } from "./Icons";
 import { Spinner } from "./Spinner";
@@ -24,9 +30,14 @@ export type FoundPlace = { name: string; location: { lat: number; lng: number } 
 export function AddressSearch({
   onSelect,
   autoFocus,
+  bounds,
+  placeholder = "Escribe la dirección o el nombre del lugar",
 }: {
   onSelect: (place: FoundPlace) => void;
   autoFocus?: boolean;
+  /** The company's service area, if it has one: nothing outside it is suggested. */
+  bounds?: SearchBounds | null;
+  placeholder?: string;
 }) {
   const listId = useId();
   const [query, setQuery] = useState("");
@@ -51,7 +62,7 @@ export function AddressSearch({
     // Set when the office keeps typing: this answer is then out of date.
     let stale = false;
     const timer = setTimeout(() => {
-      searchPlaces(text)
+      searchPlaces(text, bounds)
         .then((found) => {
           if (stale) return;
           setPlaces(found);
@@ -66,7 +77,7 @@ export function AddressSearch({
       stale = true;
       clearTimeout(timer);
     };
-  }, [text, searchable]);
+  }, [text, searchable, bounds]);
 
   async function select(place: Place) {
     setOpen(false);
@@ -93,7 +104,7 @@ export function AddressSearch({
         aria-controls={listId}
         aria-autocomplete="list"
         aria-label="Buscar dirección o lugar"
-        placeholder="Escribe la dirección o el nombre del lugar"
+        placeholder={placeholder}
         autoComplete="off"
         autoFocus={autoFocus}
         disabled={locating === "yes"}

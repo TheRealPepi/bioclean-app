@@ -44,7 +44,7 @@ test("renaming a client renames its deliveries, and can't create a duplicate", a
 });
 
 test("merging two clients keeps everything from both under the one that stays", async () => {
-  const { t, asAdmin, asDriver, driverId, deliveryArgs } = await setup();
+  const { t, companyId, asAdmin, asDriver, driverId, deliveryArgs } = await setup();
 
   // The duplicate has a delivery, a saved location and reminder settings.
   const deliveryId = await asDriver.mutation(
@@ -63,7 +63,7 @@ test("merging two clients keeps everything from both under the one that stays", 
   // The one that stays has nothing yet, and there's an unrelated third client.
   const { intoId, otherId, routeWithFrom, routeWithBoth } = await t.run(async (ctx) => {
     const client = (name: string, location?: typeof HERE) =>
-      ctx.db.insert("clients", { name, normalizedName: name, deliveryCount: 0, location });
+      ctx.db.insert("clients", { companyId, name, normalizedName: name, deliveryCount: 0, location });
     const intoId = await client("HOTEL COZUMEL");
     const otherId = await client("RESTAURANTE", FAR);
     const stop = (clientId: typeof intoId, clientName: string) => ({
@@ -73,6 +73,7 @@ test("merging two clients keeps everything from both under the one that stays", 
     });
     const route = (stops: ReturnType<typeof stop>[]) =>
       ctx.db.insert("routes", {
+        companyId,
         driverId,
         driverName: "Chofer Uno",
         stops,

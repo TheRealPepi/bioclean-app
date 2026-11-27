@@ -20,6 +20,8 @@ const label = (text: string) =>
 
 export function reminderEmailHtml(email: {
   company: string;
+  /** Line under the company's name. */
+  tagline?: string | null;
   /**
    * Optional. Left out for now: an image hosted on a domain other than the
    * sender's can push the email to spam. Pass it once the logo is on our own site.
@@ -38,8 +40,11 @@ export function reminderEmailHtml(email: {
     ? `<img src="${escapeHtml(email.logo.url)}" width="${LOGO_DISPLAY_WIDTH}" height="${Math.round(
         (LOGO_DISPLAY_WIDTH * email.logo.height) / email.logo.width,
       )}" alt="${company}" style="display:block;width:${LOGO_DISPLAY_WIDTH}px;max-width:100%;height:auto;border:0;outline:none;font-family:${FONT};font-size:22px;font-weight:700;color:${NAVY};">`
-    : `<div style="font-family:${FONT};font-size:26px;line-height:32px;font-weight:800;letter-spacing:-0.3px;color:${NAVY};">${company}</div>
-<div style="margin-top:6px;font-family:${FONT};font-size:13px;line-height:18px;color:${MUTED};">Servicio integral para su negocio &middot; Desde 1996</div>`;
+    : `<div style="font-family:${FONT};font-size:26px;line-height:32px;font-weight:800;letter-spacing:-0.3px;color:${NAVY};">${company}</div>${
+        email.tagline
+          ? `\n<div style="margin-top:6px;font-family:${FONT};font-size:13px;line-height:18px;color:${MUTED};">${escapeHtml(email.tagline)}</div>`
+          : ""
+      }`;
 
   const invoices = email.invoiceNumbers
     .map(

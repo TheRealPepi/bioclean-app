@@ -1,14 +1,21 @@
 import { ConvexError, v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type QueryCtx } from "./_generated/server";
-import { displayName, requireAdmin, requireUser, roleForEmail } from "./lib/access";
+import {
+  displayName,
+  getCompany,
+  getOwned,
+  memberByEmail,
+  requireOffice,
+  requireUser,
+} from "./lib/access";
 import { isValidPoint, type Point } from "./lib/geo";
 import { MAX_ROUTE_STOPS, ROUTE_KEEP_MS, ROUTE_TTL_MS } from "./lib/routes";
-import { legacyCompanyId } from "./lib/tenancy";
 
 /**
  * The route with, for each stop, the first delivery made to that client since
  * the route was created (by any driver): that's what marks a stop as delivered.
+ * A route's stops are always clients of its own company (see `routeFields`).
  */
 async function withProgress(ctx: QueryCtx, route: Doc<"routes">) {
   const stops = await Promise.all(
@@ -44,8 +51,12 @@ async function withProgress(ctx: QueryCtx, route: Doc<"routes">) {
 export const listAdmin = query({
   args: {},
   handler: async (ctx) => {
-    await requireAdmin(ctx);
-    const routes = await ctx.db.query("routes").order("desc").collect();
+    const { companyId } = await requireOffice(ctx);
+    const routes = await ctx.db
+      .query("routes")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .order("desc")
+      .collect();
     return await Promise.all(routes.map((route) => withProgress(ctx, route)));
   },
 });
@@ -57,10 +68,12 @@ export const listAdmin = query({
 export const listMine = query({
   args: {},
   handler: async (ctx) => {
-    const { user } = await requireUser(ctx);
+    const { user, companyId } = await requireUser(ctx);
     const routes = await ctx.db
       .query("routes")
-      .withIndex("by_driver", (q) => q.eq("driverId", user._id))
+      .withIndex("by_company_driver", (q) =>
+        q.eq("companyId", companyId).eq("driverId", user._id),
+      )
       .order("desc")
       .take(5);
     const result = await Promise.all(routes.map((route) => withProgress(ctx, route)));
@@ -87,6 +100,7 @@ const routeArgs = {
 /** What the office chose in the builder, checked and with each client's name and location. */
 async function routeFields(
   ctx: QueryCtx,
+  companyId: Id<"companies">,
   args: {
     driverId: Id<"users">;
     stops: { clientId: Id<"clients">; location?: Point }[];
@@ -96,8 +110,10 @@ async function routeFields(
   const { driverId, returnToBase } = args;
   const clientIds = args.stops.map((s) => s.clientId);
 
+  // tenant-ok: only used if this user is a member of the caller's company.
   const driver = await ctx.db.get(driverId);
-  if (!driver || roleForEmail(driver.email) === null) {
+  const membership = await memberByEmail(ctx, driver?.email);
+  if (!driver || membership?.companyId !== companyId) {
     throw new ConvexError("Ese chofer ya no tiene acceso a la app. Elige otro.");
   }
   if (clientIds.length === 0) throw new ConvexError("Elige al menos un cliente.");
@@ -110,7 +126,7 @@ async function routeFields(
 
   const stops: Doc<"routes">["stops"] = [];
   for (const { clientId, location: custom } of args.stops) {
-    const client = await ctx.db.get(clientId);
+    const client = await getOwned(ctx, companyId, clientId);
     if (!client) throw new ConvexError("Uno de los clientes ya no existe. Vuelve a elegirlos.");
     if (custom) {
       if (!isValidPoint(custom)) {
@@ -124,13 +140,13 @@ async function routeFields(
     }
   }
 
-  const settings = await ctx.db.query("settings").first();
+  const company = await getCompany(ctx, companyId);
   return {
-    companyId: await legacyCompanyId(ctx),
+    companyId,
     driverId,
     driverName: displayName(driver),
     stops,
-    base: settings?.base,
+    base: company.base,
     returnToBase,
   };
 }
@@ -138,9 +154,9 @@ async function routeFields(
 export const create = mutation({
   args: routeArgs,
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const { companyId } = await requireOffice(ctx);
     return await ctx.db.insert("routes", {
-      ...(await routeFields(ctx, args)),
+      ...(await routeFields(ctx, companyId, args)),
       expiresAt: Date.now() + ROUTE_TTL_MS,
     });
   },
@@ -154,15 +170,15 @@ export const create = mutation({
 export const update = mutation({
   args: { routeId: v.id("routes"), ...routeArgs },
   handler: async (ctx, { routeId, ...args }) => {
-    await requireAdmin(ctx);
-    const route = await ctx.db.get(routeId);
+    const { companyId } = await requireOffice(ctx);
+    const route = await getOwned(ctx, companyId, routeId);
     if (!route) throw new ConvexError("Esa ruta ya no existe.");
     if (route.expiresAt <= Date.now()) {
       throw new ConvexError("Esa ruta ya venció. Crea una nueva con «Usar de nuevo».");
     }
     // `replace`, not `patch`: a base that was removed has to go from the route too.
     await ctx.db.replace(routeId, {
-      ...(await routeFields(ctx, args)),
+      ...(await routeFields(ctx, companyId, args)),
       expiresAt: route.expiresAt,
     });
     return routeId;
@@ -172,12 +188,12 @@ export const update = mutation({
 export const remove = mutation({
   args: { routeId: v.id("routes") },
   handler: async (ctx, { routeId }) => {
-    await requireAdmin(ctx);
-    if (await ctx.db.get(routeId)) await ctx.db.delete(routeId);
+    const { companyId } = await requireOffice(ctx);
+    if (await getOwned(ctx, companyId, routeId)) await ctx.db.delete(routeId);
   },
 });
 
-/** Daily (see `crons.ts`): deletes routes that expired more than `ROUTE_KEEP_MS` ago. */
+/** Daily (see `crons.ts`): deletes every company's routes that expired more than `ROUTE_KEEP_MS` ago. */
 export const purgeExpired = internalMutation({
   args: {},
   handler: async (ctx) => {

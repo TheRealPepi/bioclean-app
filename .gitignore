@@ -5,3 +5,6 @@ dist
 .convex
 *.tsbuildinfo
 .DS_Store
+
+# Production backups (customer data): never commit them.
+respaldo*.zip

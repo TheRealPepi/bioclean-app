@@ -44,3 +44,25 @@
   font-size: 13px;
   color: var(--muted);
 }
+
+/* Crear empresa */
+.form {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+}
+
+.form :global(.error-text) {
+  margin: 0;
+}
+
+.link {
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: underline;
+}

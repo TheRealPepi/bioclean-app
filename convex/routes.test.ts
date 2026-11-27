@@ -17,13 +17,19 @@ async function setupRoutes() {
   const client = (name: string, location?: typeof HERE) =>
     base.t.run(
       async (ctx) =>
-        await ctx.db.insert("clients", { name, normalizedName: name, deliveryCount: 0, location }),
+        await ctx.db.insert("clients", {
+          companyId: base.companyId,
+          name,
+          normalizedName: name,
+          deliveryCount: 0,
+          location,
+        }),
     );
   return { ...base, client };
 }
 
 test("a route needs a driver with access and stops that can be reached", async () => {
-  const { t, asAdmin, asDriver, driverId, client } = await setupRoutes();
+  const { t, asAdmin, asDriver, driverId, rivalDriverId, client } = await setupRoutes();
   const hotel = await client("HOTEL", HERE);
   const noLocation = await client("TIENDA NUEVA");
   const create = (stops: { clientId: typeof hotel; location?: typeof HERE }[], driver = driverId) =>
@@ -47,6 +53,8 @@ test("a route needs a driver with access and stops that can be reached", async (
     async (ctx) => await ctx.db.insert("users", { email: "ya-no-trabaja@example.com" }),
   );
   await expect(create([{ clientId: hotel }], outsider)).rejects.toThrow("ya no tiene acceso");
+  // Having access to another company doesn't count.
+  await expect(create([{ clientId: hotel }], rivalDriverId)).rejects.toThrow("ya no tiene acceso");
 
   await expect(
     asDriver.mutation(api.routes.create, {
@@ -139,11 +147,12 @@ test("editing a route keeps when it expires, and an expired route can't be edite
 });
 
 test("the daily cleanup deletes only routes that expired more than 30 days ago", async () => {
-  const { t, driverId } = await setupRoutes();
+  const { t, companyId, driverId } = await setupRoutes();
   const route = (expiresAt: number) =>
     t.run(
       async (ctx) =>
         await ctx.db.insert("routes", {
+          companyId,
           driverId,
           driverName: "Chofer Uno",
           stops: [],

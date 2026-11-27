@@ -3,15 +3,11 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// 14:00 UTC = 9:00 a.m. in Cozumel (UTC-5 all year).
-crons.daily(
-  "recordatorios de pago",
-  { hourUTC: 14, minuteUTC: 0 },
-  internal.reminders.run,
-  {},
-);
+// Every hour, because each company gets its reminders in the morning of its
+// own time zone (see `reminders.tick`).
+crons.hourly("recordatorios de pago", { minuteUTC: 0 }, internal.reminders.tick, {});
 
-// 08:00 UTC = 3:00 a.m. in Cozumel.
+// 08:00 UTC: night in the Americas.
 crons.daily(
   "borrar rutas vencidas",
   { hourUTC: 8, minuteUTC: 0 },

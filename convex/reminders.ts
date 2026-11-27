@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  action,
   internalAction,
   internalMutation,
   internalQuery,
@@ -9,18 +10,20 @@ import {
   query,
   type ActionCtx,
 } from "./_generated/server";
-import { requireAdmin } from "./lib/access";
-import { formatIsoLong, isIsoDate, isoDate, LEGACY_TIME_ZONE, shiftDays } from "./lib/dates";
+import type { ReminderConfig } from "./companies";
+import { getOwned, requireOffice } from "./lib/access";
+import { formatIsoLong, isIsoDate, isoDate, localParts, shiftDays } from "./lib/dates";
 import { deliveredRange, dueDateFor, reminderDue, WEEK } from "./lib/due";
 import { reminderEmailHtml } from "./lib/reminderEmail";
-import { legacyCompanyId } from "./lib/tenancy";
 import { reminderChannel, reminderKind } from "./schema";
 
 // Payment reminders for "credito" deliveries: one a week before the payment
 // deadline and one on the day. The deadline is the delivery day plus the
-// client's credit days. `run` is called every morning by convex/crons.ts.
+// client's credit days. Each company has its own on/off date, sender and time
+// zone (`companies.reminders`); `tick` starts `run` for each one every morning.
 
-const COMPANY = "Bioclean Green Cozumel";
+/** Local hour from which a company's reminders of the day go out. */
+const SEND_HOUR = 9;
 
 type Channel = "email" | "whatsapp";
 type Kind = "semana_antes" | "vencimiento" | "prueba";
@@ -39,6 +42,7 @@ type Batch = {
 
 type RunResult = {
   status: "ok" | "apagado";
+  company: string;
   today: string;
   sent: number;
   failed: number;
@@ -57,19 +61,26 @@ function clientChannels(client: Doc<"clients">): { channel: Channel; to: string 
   return channels;
 }
 
-/** Messages that should go out on `today` for deliveries made since `start`. */
+/** A company's messages that should go out on `today` for deliveries made since `start`. */
 export const pending = internalQuery({
-  args: { today: v.string(), start: v.string() },
-  handler: async (ctx, { today, start }): Promise<Batch[]> => {
+  args: { companyId: v.id("companies"), today: v.string(), start: v.string() },
+  handler: async (ctx, { companyId, today, start }): Promise<Batch[]> => {
+    const company = await ctx.db.get(companyId); // tenant-ok: internal, for the company it is told
+    if (!company) return [];
+    const { timeZone } = company;
     const batches = new Map<string, Batch>();
 
-    for (const client of await ctx.db.query("clients").collect()) {
+    const clients = await ctx.db
+      .query("clients")
+      .withIndex("by_company_normalized", (q) => q.eq("companyId", companyId))
+      .collect();
+    for (const client of clients) {
       const creditDays = client.creditDays;
       const channels = clientChannels(client);
       if (!creditDays || channels.length === 0) continue;
 
       // Only deliveries whose deadline falls between a few days ago and a week from now.
-      const { from, until } = deliveredRange(today, creditDays, start, LEGACY_TIME_ZONE);
+      const { from, until } = deliveredRange(today, creditDays, start, timeZone);
       if (from >= until) continue;
 
       const deliveries = await ctx.db
@@ -82,7 +93,7 @@ export const pending = internalQuery({
       for (const delivery of deliveries) {
         if (delivery.payment !== "credito" || delivery.deliveredAt === undefined) continue;
 
-        const dueDate = dueDateFor(delivery.deliveredAt, creditDays, LEGACY_TIME_ZONE);
+        const dueDate = dueDateFor(delivery.deliveredAt, creditDays, timeZone);
         const kind = reminderDue(today, dueDate, creditDays);
         if (kind === null) continue;
 
@@ -114,6 +125,7 @@ export const pending = internalQuery({
 /** Logs a message and, if it was sent, marks its deliveries so it isn't sent again. */
 export const record = internalMutation({
   args: {
+    companyId: v.id("companies"),
     clientId: v.id("clients"),
     kind: reminderKind,
     channel: reminderChannel,
@@ -123,19 +135,19 @@ export const record = internalMutation({
     invoiceNumbers: v.array(v.string()),
     error: v.optional(v.string()),
   },
-  handler: async (ctx, { error, ...batch }) => {
+  handler: async (ctx, { error, companyId, ...batch }) => {
     if (error === undefined) {
       const marker = `${batch.kind}:${batch.channel}`;
       for (const id of batch.deliveryIds) {
-        const delivery = await ctx.db.get(id);
+        const delivery = await getOwned(ctx, companyId, id);
         if (!delivery || delivery.reminded?.includes(marker)) continue;
         await ctx.db.patch(id, { reminded: [...(delivery.reminded ?? []), marker] });
       }
     }
     // The client may have been merged into another one while the message was being sent.
-    if ((await ctx.db.get(batch.clientId)) === null) return;
+    if ((await getOwned(ctx, companyId, batch.clientId)) === null) return;
     await ctx.db.insert("reminders", {
-      companyId: await legacyCompanyId(ctx),
+      companyId,
       ...batch,
       status: error === undefined ? "enviado" : "error",
       error,
@@ -143,7 +155,10 @@ export const record = internalMutation({
   },
 });
 
-function messageText(batch: Batch) {
+/** What a message says; the rest of a batch is about where it goes and what it marks. */
+type Message = Pick<Batch, "clientName" | "kind" | "to" | "dueDate" | "invoiceNumbers">;
+
+function messageText(batch: Message) {
   const date = formatIsoLong(batch.dueDate);
   const many = batch.invoiceNumbers.length > 1;
   const intro =
@@ -162,12 +177,11 @@ function messageText(batch: Batch) {
   return { date, intro, subject };
 }
 
-async function sendEmail(batch: Batch) {
+async function sendEmail(batch: Message, config: ReminderConfig) {
+  const { sender, companyName } = config;
+  if ("error" in sender) throw new Error(sender.error);
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.REMINDER_FROM_EMAIL;
-  if (!apiKey || !from) {
-    throw new Error("Falta configurar RESEND_API_KEY y REMINDER_FROM_EMAIL en Convex.");
-  }
+  if (!apiKey) throw new Error("Falta configurar RESEND_API_KEY en Convex.");
   const { date, intro, subject } = messageText(batch);
   const closing = "Si ya realizó el pago, por favor haga caso omiso de este mensaje.";
   const text = [
@@ -179,10 +193,11 @@ async function sendEmail(batch: Batch) {
     closing,
     "",
     "Gracias,",
-    COMPANY,
+    companyName,
   ].join("\n");
   const html = reminderEmailHtml({
-    company: COMPANY,
+    company: companyName,
+    tagline: config.tagline,
     clientName: batch.clientName,
     intro,
     date,
@@ -190,17 +205,16 @@ async function sendEmail(batch: Batch) {
     closing,
   });
 
-  const replyTo = process.env.REMINDER_REPLY_TO;
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from,
+      from: sender.from,
       to: [batch.to],
       subject,
       text,
       html,
-      ...(replyTo ? { reply_to: replyTo } : {}),
+      ...(sender.replyTo ? { reply_to: sender.replyTo } : {}),
     }),
   });
   if (!response.ok) {
@@ -213,17 +227,16 @@ async function sendEmail(batch: Batch) {
  * by Meta. Both templates take three body variables: client name, factura
  * numbers and the payment deadline (see the README for their text).
  */
-async function sendWhatsApp(batch: Batch) {
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (!token || !phoneNumberId) {
-    throw new Error("Falta configurar WHATSAPP_TOKEN y WHATSAPP_PHONE_NUMBER_ID en Convex.");
+async function sendWhatsApp(batch: Batch, { whatsapp }: ReminderConfig) {
+  if (!whatsapp) {
+    throw new Error(
+      "Falta configurar WhatsApp en Configuración › Recordatorios (el identificador del número y el token).",
+    );
   }
+  const { token, phoneNumberId } = whatsapp;
   const version = process.env.WHATSAPP_API_VERSION || "v26.0";
   const template =
-    batch.kind === "vencimiento"
-      ? process.env.WHATSAPP_TEMPLATE_VENCIMIENTO || "recordatorio_pago_vencimiento"
-      : process.env.WHATSAPP_TEMPLATE_PROXIMO || "recordatorio_pago_proximo";
+    batch.kind === "vencimiento" ? whatsapp.templateVencimiento : whatsapp.templateProximo;
 
   // Template variables can't have line breaks, and the whole message has a length limit.
   let invoices = batch.invoiceNumbers.join(", ");
@@ -243,7 +256,7 @@ async function sendWhatsApp(batch: Batch) {
       type: "template",
       template: {
         name: template,
-        language: { code: process.env.WHATSAPP_TEMPLATE_LANG || "es_MX" },
+        language: { code: whatsapp.lang },
         components: [{ type: "body", parameters }],
       },
     }),
@@ -254,14 +267,19 @@ async function sendWhatsApp(batch: Batch) {
 }
 
 /** Sends each message and logs the result. A failure never stops the rest. */
-async function deliver(ctx: ActionCtx, batches: Batch[]) {
+async function deliver(
+  ctx: ActionCtx,
+  companyId: Id<"companies">,
+  config: ReminderConfig,
+  batches: Batch[],
+) {
   let sent = 0;
   let failed = 0;
   for (const batch of batches) {
     let error: string | undefined;
     try {
-      if (batch.channel === "email") await sendEmail(batch);
-      else await sendWhatsApp(batch);
+      if (batch.channel === "email") await sendEmail(batch, config);
+      else await sendWhatsApp(batch, config);
       sent++;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -269,51 +287,91 @@ async function deliver(ctx: ActionCtx, batches: Batch[]) {
     }
     // The log row doesn't keep the client's name (it follows renames through clientId).
     const { clientName: _clientName, ...row } = batch;
-    await ctx.runMutation(internal.reminders.record, { ...row, error });
+    await ctx.runMutation(internal.reminders.record, { companyId, ...row, error });
   }
   return { sent, failed };
 }
 
+async function configOf(ctx: ActionCtx, companyId: Id<"companies">): Promise<ReminderConfig> {
+  const config = await ctx.runQuery(internal.companies.reminderConfig, { companyId });
+  if (!config) throw new Error("Esa empresa no existe.");
+  return config;
+}
+
 /**
- * Sends today's reminders. Does nothing until REMINDERS_START_DATE
- * ("YYYY-MM-DD") is set in Convex: only deliveries made from that day on get
- * reminders.
+ * Sends a company's reminders of the day. Does nothing until the company sets
+ * the day reminders start (Configuración › Recordatorios): only deliveries made
+ * from that day on get them.
  *
  * To see what would be sent without sending it:
- * `npx convex run reminders:run '{"dryRun": true}'` (and `"today": "2026-12-01"`
- * to try another day).
+ * `npx convex run reminders:run '{"companyId": "…", "dryRun": true}'` (and
+ * `"today": "2026-12-01"` to try another day). `npx convex run companies:list`
+ * gives the ids.
  */
 export const run = internalAction({
-  args: { today: v.optional(v.string()), dryRun: v.optional(v.boolean()) },
-  handler: async (ctx, args): Promise<RunResult> => {
-    const today = args.today ?? isoDate(Date.now(), LEGACY_TIME_ZONE);
+  args: {
+    companyId: v.id("companies"),
+    today: v.optional(v.string()),
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { companyId, dryRun, ...args }): Promise<RunResult> => {
+    const config = await configOf(ctx, companyId);
+    const company = config.companyName;
+    const today = args.today ?? isoDate(Date.now(), config.timeZone);
     if (!isIsoDate(today)) throw new Error(`Fecha inválida: ${today}`);
 
-    const start = process.env.REMINDERS_START_DATE?.trim();
-    if (!start) return { status: "apagado", today, sent: 0, failed: 0, batches: [] };
-    if (!isIsoDate(start)) {
-      throw new Error(`REMINDERS_START_DATE debe tener el formato AAAA-MM-DD (tiene "${start}").`);
-    }
+    const start = config.startDate;
+    if (!start) return { status: "apagado", company, today, sent: 0, failed: 0, batches: [] };
 
-    const batches: Batch[] = await ctx.runQuery(internal.reminders.pending, { today, start });
-    if (args.dryRun) return { status: "ok", today, sent: 0, failed: 0, batches };
-    return { status: "ok", today, ...(await deliver(ctx, batches)), batches };
+    const batches: Batch[] = await ctx.runQuery(internal.reminders.pending, {
+      companyId,
+      today,
+      start,
+    });
+    if (dryRun) return { status: "ok", company, today, sent: 0, failed: 0, batches };
+    const result = await deliver(ctx, companyId, config, batches);
+    return { status: "ok", company, today, ...result, batches };
+  },
+});
+
+/**
+ * Every hour (see `crons.ts`): starts the reminders of each company that has
+ * them on, once a day, when it's morning there.
+ */
+export const tick = internalMutation({
+  // `now` is only passed by tests.
+  args: { now: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const now = args.now ?? Date.now();
+    const started: string[] = [];
+    // tenant-ok: the job is for every company.
+    for (const company of await ctx.db.query("companies").collect()) {
+      if (!company.reminders?.startDate) continue;
+      const today = isoDate(now, company.timeZone);
+      if (localParts(now, company.timeZone).hours < SEND_HOUR) continue;
+      if (company.remindersLastRunOn === today) continue;
+      await ctx.db.patch(company._id, { remindersLastRunOn: today });
+      await ctx.scheduler.runAfter(0, internal.reminders.run, { companyId: company._id, today });
+      started.push(company.name);
+    }
+    return { started };
   },
 });
 
 /** A sample message per channel of the client, to check their contact data. */
 export const testBatches = internalQuery({
-  args: { clientId: v.id("clients") },
-  handler: async (ctx, { clientId }): Promise<Batch[]> => {
-    const client = await ctx.db.get(clientId);
-    if (!client) return [];
+  args: { companyId: v.id("companies"), clientId: v.id("clients") },
+  handler: async (ctx, { companyId, clientId }): Promise<Batch[]> => {
+    const company = await ctx.db.get(companyId); // tenant-ok: internal, for the company it is told
+    const client = await getOwned(ctx, companyId, clientId);
+    if (!company || !client) return [];
     return clientChannels(client).map(({ channel, to }) => ({
       clientId,
       clientName: client.name,
       kind: "prueba",
       channel,
       to,
-      dueDate: shiftDays(isoDate(Date.now(), LEGACY_TIME_ZONE), WEEK),
+      dueDate: shiftDays(isoDate(Date.now(), company.timeZone), WEEK),
       deliveryIds: [],
       invoiceNumbers: ["PRUEBA-001"],
     }));
@@ -321,24 +379,50 @@ export const testBatches = internalQuery({
 });
 
 export const deliverTest = internalAction({
-  args: { clientId: v.id("clients") },
-  handler: async (ctx, { clientId }): Promise<void> => {
-    const batches: Batch[] = await ctx.runQuery(internal.reminders.testBatches, { clientId });
-    await deliver(ctx, batches);
+  args: { companyId: v.id("companies"), clientId: v.id("clients") },
+  handler: async (ctx, args): Promise<void> => {
+    const config = await configOf(ctx, args.companyId);
+    const batches: Batch[] = await ctx.runQuery(internal.reminders.testBatches, args);
+    await deliver(ctx, args.companyId, config, batches);
   },
 });
 
-/** Admin button "Enviar prueba". The result shows up in `listForClient`. */
+/** Office button "Enviar prueba". The result shows up in `listForClient`. */
 export const sendTest = mutation({
   args: { clientId: v.id("clients") },
   handler: async (ctx, { clientId }) => {
-    await requireAdmin(ctx);
-    const client = await ctx.db.get(clientId);
+    const { companyId } = await requireOffice(ctx);
+    const client = await getOwned(ctx, companyId, clientId);
     if (!client) throw new ConvexError("El cliente ya no existe.");
     if (clientChannels(client).length === 0) {
       throw new ConvexError("Primero elige por dónde avisarle y guarda sus datos de contacto.");
     }
-    await ctx.scheduler.runAfter(0, internal.reminders.deliverTest, { clientId });
+    await ctx.scheduler.runAfter(0, internal.reminders.deliverTest, { companyId, clientId });
+  },
+});
+
+/**
+ * Settings button "Enviarme una prueba": a sample reminder email to the admin's
+ * own address, to check the company's sender. Fails with what went wrong.
+ */
+export const testSender = action({
+  args: {},
+  handler: async (ctx): Promise<{ to: string }> => {
+    // guard: `viewerReminderConfig` only answers an owner or admin, about their own company.
+    const { to, config } = await ctx.runQuery(internal.companies.viewerReminderConfig, {});
+    const sample: Message = {
+      clientName: "CLIENTE DE EJEMPLO",
+      kind: "prueba",
+      to,
+      dueDate: shiftDays(isoDate(Date.now(), config.timeZone), WEEK),
+      invoiceNumbers: ["PRUEBA-001"],
+    };
+    try {
+      await sendEmail(sample, config);
+    } catch (e) {
+      throw new ConvexError(e instanceof Error ? e.message : String(e));
+    }
+    return { to };
   },
 });
 
@@ -346,7 +430,8 @@ export const sendTest = mutation({
 export const listForClient = query({
   args: { clientId: v.id("clients") },
   handler: async (ctx, { clientId }) => {
-    await requireAdmin(ctx);
+    const { companyId } = await requireOffice(ctx);
+    if (!(await getOwned(ctx, companyId, clientId))) return [];
     const rows = await ctx.db
       .query("reminders")
       .withIndex("by_client", (q) => q.eq("clientId", clientId))

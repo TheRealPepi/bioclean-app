@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as clients from "../clients.js";
+import type * as companies from "../companies.js";
 import type * as crons from "../crons.js";
 import type * as deliveries from "../deliveries.js";
 import type * as http from "../http.js";
@@ -19,9 +20,9 @@ import type * as lib_due from "../lib/due.js";
 import type * as lib_geo from "../lib/geo.js";
 import type * as lib_reminderEmail from "../lib/reminderEmail.js";
 import type * as lib_routes from "../lib/routes.js";
-import type * as lib_tenancy from "../lib/tenancy.js";
+import type * as lib_sender from "../lib/sender.js";
 import type * as lib_text from "../lib/text.js";
-import type * as migrations from "../migrations.js";
+import type * as members from "../members.js";
 import type * as reminders from "../reminders.js";
 import type * as routes from "../routes.js";
 import type * as settings from "../settings.js";
@@ -37,6 +38,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   clients: typeof clients;
+  companies: typeof companies;
   crons: typeof crons;
   deliveries: typeof deliveries;
   http: typeof http;
@@ -46,9 +48,9 @@ declare const fullApi: ApiFromModules<{
   "lib/geo": typeof lib_geo;
   "lib/reminderEmail": typeof lib_reminderEmail;
   "lib/routes": typeof lib_routes;
-  "lib/tenancy": typeof lib_tenancy;
+  "lib/sender": typeof lib_sender;
   "lib/text": typeof lib_text;
-  migrations: typeof migrations;
+  members: typeof members;
   reminders: typeof reminders;
   routes: typeof routes;
   settings: typeof settings;

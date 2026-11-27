@@ -1,37 +1,35 @@
 import { query } from "./_generated/server";
 import {
+  canCreateCompany,
   capabilitiesFor,
   displayName,
-  emailList,
+  getCompany,
   getViewer,
-  requireAdmin,
-  roleForEmail,
+  legacyRole,
+  requireOffice,
 } from "./lib/access";
-import { cleanEmail } from "./lib/text";
+import { userByEmail } from "./members";
 
+/**
+ * The signed-in user, their role and their company. Someone who isn't a member
+ * of any company gets null in those: the app shows them the "no access" screen,
+ * or the form to create a company if `canCreateCompany`.
+ */
 export const me = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await getViewer(ctx);
     if (viewer === null) return null;
-
-    // Not used to grant access yet (`role` still comes from the env vars):
-    // returned so phones already have it stored when it is.
-    const email = viewer.user.email;
-    const member = email
-      ? await ctx.db
-          .query("members")
-          .withIndex("by_email", (q) => q.eq("email", cleanEmail(email)))
-          .first()
-      : null;
-    const company = member ? await ctx.db.get(member.companyId) : null;
+    const { user, member } = viewer;
+    const company = member && (await getCompany(ctx, member.companyId));
 
     return {
-      _id: viewer.user._id,
-      name: displayName(viewer.user),
-      email: viewer.user.email ?? null,
-      image: viewer.user.image ?? null,
-      role: viewer.role,
+      _id: user._id,
+      name: displayName(user),
+      email: user.email ?? null,
+      image: user.image ?? null,
+      // "admin" or "driver": all that app versions from before companies know.
+      role: legacyRole(member?.role),
       memberRole: member?.role ?? null,
       can: capabilitiesFor(member?.role),
       company: company && {
@@ -41,30 +39,41 @@ export const me = query({
         phoneCountryCode: company.phoneCountryCode,
         serviceArea: company.serviceArea ?? null,
       },
+      canCreateCompany: member === null && canCreateCompany(user.email),
     };
   },
 });
 
 /**
- * Everyone who can register deliveries (drivers, plus any admin who has
- * delivered), and emails in ALLOWED_EMAILS that have never signed in.
+ * Everyone in the company who registers deliveries (the drivers, plus anyone
+ * from the office who has delivered), and the drivers who were given access
+ * but have never signed in.
  */
 export const listDrivers = query({
   args: {},
   handler: async (ctx) => {
-    await requireAdmin(ctx);
-    const users = await ctx.db.query("users").collect();
+    const { companyId } = await requireOffice(ctx);
+    const members = await ctx.db
+      .query("members")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
 
     const drivers = [];
-    for (const user of users) {
-      const role = roleForEmail(user.email);
-      if (role === null) continue;
+    const pendingEmails = [];
+    for (const member of members) {
+      const user = await userByEmail(ctx, member.email);
+      if (!user) {
+        if (member.role === "driver") pendingEmails.push(member.email);
+        continue;
+      }
       const deliveries = await ctx.db
         .query("deliveries")
-        .withIndex("by_driver", (q) => q.eq("driverId", user._id))
+        .withIndex("by_company_driver", (q) =>
+          q.eq("companyId", companyId).eq("driverId", user._id),
+        )
         .order("desc")
         .collect();
-      if (role === "admin" && deliveries.length === 0) continue;
+      if (member.role !== "driver" && deliveries.length === 0) continue;
       drivers.push({
         _id: user._id,
         name: displayName(user),
@@ -75,11 +84,7 @@ export const listDrivers = query({
       });
     }
     drivers.sort((a, b) => a.name.localeCompare(b.name, "es"));
-
-    const signedIn = new Set(users.map((u) => u.email?.toLowerCase()));
-    const pendingEmails = [...emailList(process.env.ALLOWED_EMAILS)]
-      .filter((email) => !signedIn.has(email))
-      .sort();
+    pendingEmails.sort();
 
     return { drivers, pendingEmails };
   },

@@ -73,7 +73,7 @@ export async function downloadDeliveryPdf(d: DeliveryDetails): Promise<void> {
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(17);
-  doc.text("Bioclean Green Cozumel", margin, 14);
+  doc.text(doc.splitTextToSize(d.companyName, contentW - 95)[0], margin, 14);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(11);
   doc.text("Comprobante de entrega", margin, 22);
@@ -274,7 +274,7 @@ export async function downloadDeliveryPdf(d: DeliveryDetails): Promise<void> {
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
   doc.text(
-    `Generado el ${formatLongDate(Date.now())} · Bioclean Green Cozumel`,
+    `Generado el ${formatLongDate(Date.now())} · ${d.companyName}`,
     pageW / 2,
     pageH - 8,
     { align: "center" },

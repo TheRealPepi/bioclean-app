@@ -106,9 +106,9 @@ export const companyReminders = v.object({
   ),
 });
 
-// The company a row belongs to. Rows from before companies existed don't have
-// it until `migrations.stampRows` runs.
-const companyId = v.optional(v.id("companies"));
+// The company a row belongs to. Every function reads and writes only the rows
+// of the caller's company (see `convex/lib/access.ts`).
+const companyId = v.id("companies");
 
 export default defineSchema({
   ...authTables,
@@ -150,12 +150,6 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_company", ["companyId"]),
 
-  // A single row with what the office configures for the whole app.
-  settings: defineTable({
-    // Where routes start (the warehouse).
-    base: v.optional(locationObj),
-  }),
-
   // A route the office planned for one driver. Whether a stop is delivered is
   // not stored: it's worked out from the deliveries made after the route was
   // created (see `convex/routes.ts`).
@@ -171,7 +165,6 @@ export default defineSchema({
     // Drivers stop seeing the route after this; a daily job deletes it later.
     expiresAt: v.number(),
   })
-    .index("by_driver", ["driverId", "expiresAt"])
     .index("by_expires", ["expiresAt"])
     .index("by_company", ["companyId"])
     .index("by_company_driver", ["companyId", "driverId", "expiresAt"]),
@@ -194,7 +187,6 @@ export default defineSchema({
     creditDays: v.optional(v.number()),
     notifyBy: v.optional(notifyChannel),
   })
-    .index("by_normalized", ["normalizedName"])
     .index("by_company_normalized", ["companyId", "normalizedName"]),
 
   vehicles: defineTable({
@@ -204,7 +196,6 @@ export default defineSchema({
     // Removed vehicles are archived so past deliveries keep them.
     active: v.boolean(),
   })
-    .index("by_normalized", ["normalizedName"])
     .index("by_company_normalized", ["companyId", "normalizedName"]),
 
   // One row per factura number, so the duplicate warning can find any number
@@ -213,9 +204,7 @@ export default defineSchema({
     companyId,
     number: v.string(),
     deliveryId: v.id("deliveries"),
-  })
-    .index("by_number", ["number"])
-    .index("by_company_number", ["companyId", "number"]),
+  }).index("by_company_number", ["companyId", "number"]),
 
   deliveries: defineTable({
     companyId,
@@ -274,16 +263,14 @@ export default defineSchema({
     driverName: v.string(),
     // When the driver recorded it on the phone. Can be earlier than
     // _creationTime if it was saved without signal and uploaded later.
-    // Rows from before offline mode get it from `backfillDeliveredAt`.
     deliveredAt: v.optional(v.number()),
     // Random id generated on the phone so a retried upload never creates the
     // same delivery twice.
     clientRequestId: v.optional(v.string()),
   })
-    .index("by_driver", ["driverId", "deliveredAt"])
-    .index("by_delivered", ["deliveredAt"])
+    // These three are only read with an id that was already checked to be the
+    // company's (a client or a vehicle), or to find a retried upload.
     .index("by_client", ["clientId", "deliveredAt"])
-    .index("by_invoice", ["invoiceNumber"])
     .index("by_vehicle", ["vehicleId"])
     .index("by_client_request", ["clientRequestId"])
     .index("by_company_driver", ["companyId", "driverId", "deliveredAt"])

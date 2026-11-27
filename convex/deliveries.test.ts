@@ -1,12 +1,13 @@
 // @vitest-environment edge-runtime
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { api } from "./_generated/api";
-import { ADMIN_EMAIL, FAR, HERE, setup } from "./test.setup";
+import { ADMIN_EMAIL, FAR, HERE, OUTSIDER_EMAIL, setup } from "./test.setup";
 
 const ANY_TIME = { from: 0, to: Number.MAX_SAFE_INTEGER };
 
-test("only people on the access lists can use the app, and only the office sees everything", async () => {
-  const { t, asAdmin, asDriver, asOutsider, deliveryArgs } = await setup();
+test("only the users of a company can use the app, and only its office sees everything", async () => {
+  const { t, companyId, asOwner, asAdmin, asOffice, asDriver, asOutsider, deliveryArgs } =
+    await setup();
 
   await expect(t.mutation(api.deliveries.create, await deliveryArgs())).rejects.toThrow(
     "No tienes acceso",
@@ -20,13 +21,29 @@ test("only people on the access lists can use the app, and only the office sees 
   await expect(
     asDriver.mutation(api.deliveries.setPayment, { id, payment: "pagado" }),
   ).rejects.toThrow("Solo el administrador");
-  expect(await asAdmin.query(api.deliveries.list, ANY_TIME)).toHaveLength(1);
+  for (const office of [asOwner, asAdmin, asOffice]) {
+    expect(await office.query(api.deliveries.list, ANY_TIME)).toHaveLength(1);
+  }
 
-  // Access lists are typed by hand: letter case and separators don't matter.
-  vi.stubEnv("ADMIN_EMAILS", `otra@example.com; ${ADMIN_EMAIL.toUpperCase()}`);
-  expect(await asAdmin.query(api.deliveries.list, ANY_TIME)).toHaveLength(1);
-  // Taking someone off the list takes effect right away.
-  vi.stubEnv("ADMIN_EMAILS", "otra@example.com");
+  // Emails are typed by hand: letter case and spaces around them don't matter.
+  await asAdmin.mutation(api.members.add, {
+    email: `  ${OUTSIDER_EMAIL.toUpperCase()} `,
+    role: "office",
+  });
+  expect(await asOutsider.query(api.deliveries.list, ANY_TIME)).toHaveLength(1);
+
+  // Removing a user takes effect on their very next call.
+  const members = await t.run(
+    async (ctx) =>
+      await ctx.db
+        .query("members")
+        .withIndex("by_company", (q) => q.eq("companyId", companyId))
+        .collect(),
+  );
+  const memberId = (email: string) => members.find((m) => m.email === email)!._id;
+  await asAdmin.mutation(api.members.remove, { memberId: memberId(OUTSIDER_EMAIL) });
+  await expect(asOutsider.query(api.deliveries.list, ANY_TIME)).rejects.toThrow("No tienes acceso");
+  await asOwner.mutation(api.members.remove, { memberId: memberId(ADMIN_EMAIL) });
   await expect(asAdmin.query(api.deliveries.list, ANY_TIME)).rejects.toThrow("No tienes acceso");
 });
 

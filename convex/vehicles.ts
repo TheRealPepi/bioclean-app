@@ -1,15 +1,26 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query } from "./_generated/server";
-import { requireAdmin, requireUser } from "./lib/access";
-import { legacyCompanyId } from "./lib/tenancy";
+import type { Id } from "./_generated/dataModel";
+import { mutation, query, type QueryCtx } from "./_generated/server";
+import { getOwned, requireOffice, requireUser } from "./lib/access";
 import { cleanName, normalizeKey } from "./lib/text";
 
-/** Every vehicle, archived included (drivers only show the active ones). */
+const vehicleNamed = (ctx: QueryCtx, companyId: Id<"companies">, key: string) =>
+  ctx.db
+    .query("vehicles")
+    .withIndex("by_company_normalized", (q) =>
+      q.eq("companyId", companyId).eq("normalizedName", key),
+    )
+    .first();
+
+/** Every vehicle of the company, archived included (drivers only show the active ones). */
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
-    const vehicles = await ctx.db.query("vehicles").collect();
+    const { companyId } = await requireUser(ctx);
+    const vehicles = await ctx.db
+      .query("vehicles")
+      .withIndex("by_company_normalized", (q) => q.eq("companyId", companyId))
+      .collect();
     return vehicles
       .map((veh) => ({ _id: veh._id, name: veh.name, active: veh.active }))
       .sort((a, b) => a.name.localeCompare(b.name, "es"));
@@ -19,14 +30,11 @@ export const list = query({
 export const create = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
-    await requireAdmin(ctx);
+    const { companyId } = await requireOffice(ctx);
     const clean = cleanName(name);
     const key = normalizeKey(clean);
     if (!key) throw new ConvexError("Escribe el nombre del vehículo.");
-    const existing = await ctx.db
-      .query("vehicles")
-      .withIndex("by_normalized", (q) => q.eq("normalizedName", key))
-      .first();
+    const existing = await vehicleNamed(ctx, companyId, key);
     if (existing?.active) throw new ConvexError(`Ya existe el vehículo "${existing.name}".`);
     if (existing) {
       // Same name as a removed one: bring it back.
@@ -34,7 +42,7 @@ export const create = mutation({
       return existing._id;
     }
     return await ctx.db.insert("vehicles", {
-      companyId: await legacyCompanyId(ctx),
+      companyId,
       name: clean,
       normalizedName: key,
       active: true,
@@ -45,18 +53,15 @@ export const create = mutation({
 export const rename = mutation({
   args: { vehicleId: v.id("vehicles"), name: v.string() },
   handler: async (ctx, { vehicleId, name }) => {
-    await requireAdmin(ctx);
-    const vehicle = await ctx.db.get(vehicleId);
+    const { companyId } = await requireOffice(ctx);
+    const vehicle = await getOwned(ctx, companyId, vehicleId);
     if (!vehicle) throw new ConvexError("El vehículo ya no existe.");
 
     const clean = cleanName(name);
     const key = normalizeKey(clean);
     if (!key) throw new ConvexError("El nombre no puede estar vacío.");
 
-    const clash = await ctx.db
-      .query("vehicles")
-      .withIndex("by_normalized", (q) => q.eq("normalizedName", key))
-      .first();
+    const clash = await vehicleNamed(ctx, companyId, key);
     if (clash && clash._id !== vehicleId) {
       throw new ConvexError(`Ya existe el vehículo "${clash.name}".`);
     }
@@ -76,8 +81,8 @@ export const rename = mutation({
 export const setActive = mutation({
   args: { vehicleId: v.id("vehicles"), active: v.boolean() },
   handler: async (ctx, { vehicleId, active }) => {
-    await requireAdmin(ctx);
-    const vehicle = await ctx.db.get(vehicleId);
+    const { companyId } = await requireOffice(ctx);
+    const vehicle = await getOwned(ctx, companyId, vehicleId);
     if (!vehicle) throw new ConvexError("El vehículo ya no existe.");
     await ctx.db.patch(vehicleId, { active });
   },

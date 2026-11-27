@@ -16,7 +16,7 @@ export function NoAccessPage({ email }: { email: string | null }) {
           ) : (
             "Esta cuenta no está autorizada."
           )}{" "}
-          Pide al administrador que la agregue.
+          Pide al administrador de tu empresa que la agregue.
         </p>
         <button type="button" className="btn btn-primary btn-lg" onClick={() => void signOut()}>
           Entrar con otra cuenta

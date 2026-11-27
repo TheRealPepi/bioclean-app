@@ -20,10 +20,7 @@ export function DriversPage() {
     <div className={styles.page}>
       <div className={styles.heading}>
         <h1>Choferes</h1>
-        <p>
-          Para dar acceso a un chofer, agrega su correo de Google a <code>ALLOWED_EMAILS</code> en
-          Convex.
-        </p>
+        <p>Para dar acceso a un chofer, agrega su correo de Google en Configuración › Usuarios.</p>
       </div>
 
       <section className={`card ${styles.tableCard}`}>

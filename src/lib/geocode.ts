@@ -14,8 +14,8 @@ export type Place = {
   prediction: google.maps.places.PlacePrediction;
 };
 
-// Only the island, so "Calle 10 Norte" isn't the one in Playa del Carmen.
-const COZUMEL = { west: -87.06, south: 20.25, east: -86.7, north: 20.62 };
+/** Where a company delivers: suggestions outside it are left out. */
+export type SearchBounds = { west: number; south: number; east: number; north: number };
 
 export const MIN_SEARCH_LENGTH = 3;
 
@@ -23,8 +23,12 @@ export const MIN_SEARCH_LENGTH = 3;
 // place as a single session, as long as they share this token.
 let session: google.maps.places.AutocompleteSessionToken | null = null;
 
-/** Addresses and places in Cozumel matching what was typed. Throws if Google can't be reached. */
-export async function searchPlaces(query: string): Promise<Place[]> {
+/**
+ * Addresses and places matching what was typed. With `bounds` (the company's
+ * service area) only the ones inside it, so "Calle 10 Norte" isn't the one in
+ * the next town. Throws if Google can't be reached.
+ */
+export async function searchPlaces(query: string, bounds?: SearchBounds | null): Promise<Place[]> {
   await loadGoogleMaps();
   const { AutocompleteSuggestion, AutocompleteSessionToken } = (await google.maps.importLibrary(
     "places",
@@ -33,7 +37,7 @@ export async function searchPlaces(query: string): Promise<Place[]> {
   const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
     input: query,
     sessionToken: session,
-    locationRestriction: COZUMEL,
+    ...(bounds ? { locationRestriction: bounds } : {}),
     language: "es",
     region: "mx",
   });

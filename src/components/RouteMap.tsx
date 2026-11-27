@@ -11,8 +11,10 @@ import { Spinner } from "./Spinner";
 type Point = { lat: number; lng: number };
 export type MapClient = { id: string; name: string; location: Point };
 
-// San Miguel de Cozumel, shown until there's something to frame.
-const DEFAULT_CENTER: Point = { lat: 20.5083, lng: -86.9458 };
+// Shown until there's something to frame: the company's service area if it
+// has one, or else the whole country.
+const COUNTRY = { center: { lat: 23.6, lng: -102.5 }, zoom: 5 };
+const AREA_ZOOM = 13;
 // Close enough to tell one building from the next.
 const STREET_ZOOM = 18;
 const MAX_FRAMED_ZOOM = 16;
@@ -55,6 +57,7 @@ function quietly(detach: () => void) {
  * office sees who else is nearby.
  */
 export function RouteMap({
+  defaultCenter,
   base,
   stops,
   others,
@@ -66,6 +69,8 @@ export function RouteMap({
   onToggle,
   onPick,
 }: {
+  /** The centre of the company's service area. Only read when the map is created. */
+  defaultCenter?: Point | null;
   base: Point | null;
   stops: MapClient[];
   others: MapClient[];
@@ -104,8 +109,8 @@ export function RouteMap({
       .then(() => {
         if (unmounted || rejected || !container.current) return;
         const instance = new google.maps.Map(container.current, {
-          center: DEFAULT_CENTER,
-          zoom: 13,
+          center: defaultCenter ?? COUNTRY.center,
+          zoom: defaultCenter ? AREA_ZOOM : COUNTRY.zoom,
           mapId: googleMapsMapId,
           // Scroll zooms the map, as the page itself rarely needs scrolling here.
           gestureHandling: "greedy",

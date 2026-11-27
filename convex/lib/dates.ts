@@ -3,8 +3,9 @@
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The first company's zone (Cozumel). Passed wherever the code doesn't know
- * the company yet.
+ * The zone of the first company (Cozumel), from when it was the only one. The
+ * frontend uses it until it knows the company's zone, which only happens with a
+ * profile stored on a phone by an app version from before companies.
  */
 export const LEGACY_TIME_ZONE = "America/Cancun";
 
@@ -66,6 +67,15 @@ export function utcOffsetMs(ms: number, timeZone: string): number {
     parts.second,
   );
   return wallClock - Math.floor(ms / 1000) * 1000;
+}
+
+/** The zone's name as the time zone database writes it, or null if it doesn't exist. */
+export function canonicalTimeZone(timeZone: string): string | null {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone: timeZone.trim() }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
 }
 
 /** Wall-clock parts of the given instant in the zone. */

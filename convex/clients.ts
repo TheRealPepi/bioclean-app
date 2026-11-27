@@ -1,17 +1,22 @@
 import { ConvexError, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
-import { requireAdmin, requireUser } from "./lib/access";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { getCompany, getOwned, requireOffice, requireUser } from "./lib/access";
 import { isValidPoint } from "./lib/geo";
-import { legacyCompanyId } from "./lib/tenancy";
 import { cleanEmail, cleanName, cleanPhone, isEmail, isPhone, normalizeKey } from "./lib/text";
 import { notifyChannel } from "./schema";
+
+const companyClients = (ctx: QueryCtx, companyId: Id<"companies">) =>
+  ctx.db
+    .query("clients")
+    .withIndex("by_company_normalized", (q) => q.eq("companyId", companyId))
+    .collect();
 
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireUser(ctx);
-    const clients = await ctx.db.query("clients").collect();
+    const { companyId } = await requireUser(ctx);
+    const clients = await companyClients(ctx, companyId);
     return clients
       .map((c) => ({
         _id: c._id,
@@ -25,14 +30,14 @@ export const list = query({
 });
 
 /**
- * The admin's client list, with the payment reminder settings. Kept apart from
+ * The office's client list, with the payment reminder settings. Kept apart from
  * `list` because drivers store that one on their phones.
  */
 export const listAdmin = query({
   args: {},
   handler: async (ctx) => {
-    await requireAdmin(ctx);
-    const clients = await ctx.db.query("clients").collect();
+    const { companyId } = await requireOffice(ctx);
+    const clients = await companyClients(ctx, companyId);
     return clients
       .map((c) => ({
         _id: c._id,
@@ -49,25 +54,35 @@ export const listAdmin = query({
   },
 });
 
-/** Returns the client matching `name` (ignoring accents/punctuation), creating it if needed. */
-export async function findOrCreateClient(ctx: MutationCtx, name: string) {
+/**
+ * Returns the company's client matching `name` (ignoring accents/punctuation),
+ * creating it if needed.
+ */
+export async function findOrCreateClient(
+  ctx: MutationCtx,
+  companyId: Id<"companies">,
+  name: string,
+) {
   const clean = cleanName(name);
   const key = normalizeKey(clean);
   if (!key) throw new ConvexError("Escribe el nombre del cliente.");
   const existing = await ctx.db
     .query("clients")
-    .withIndex("by_normalized", (q) => q.eq("normalizedName", key))
+    .withIndex("by_company_normalized", (q) =>
+      q.eq("companyId", companyId).eq("normalizedName", key),
+    )
     .first();
   if (existing) return existing;
   const id = await ctx.db.insert("clients", {
-    companyId: await legacyCompanyId(ctx),
+    companyId,
     name: clean,
     normalizedName: key,
     deliveryCount: 0,
   });
-  return (await ctx.db.get(id))!;
+  return (await getOwned(ctx, companyId, id))!;
 }
 
+/** `fromId` is a client already known to be the caller's company's. */
 async function setDeliveriesClient(
   ctx: MutationCtx,
   fromId: Id<"clients">,
@@ -86,8 +101,8 @@ async function setDeliveriesClient(
 export const rename = mutation({
   args: { clientId: v.id("clients"), name: v.string() },
   handler: async (ctx, { clientId, name }) => {
-    await requireAdmin(ctx);
-    const client = await ctx.db.get(clientId);
+    const { companyId } = await requireOffice(ctx);
+    const client = await getOwned(ctx, companyId, clientId);
     if (!client) throw new ConvexError("El cliente ya no existe.");
 
     const clean = cleanName(name);
@@ -96,7 +111,9 @@ export const rename = mutation({
 
     const clash = await ctx.db
       .query("clients")
-      .withIndex("by_normalized", (q) => q.eq("normalizedName", key))
+      .withIndex("by_company_normalized", (q) =>
+        q.eq("companyId", companyId).eq("normalizedName", key),
+      )
       .first();
     if (clash && clash._id !== clientId) {
       throw new ConvexError(
@@ -119,17 +136,18 @@ export const updateBilling = mutation({
     notifyBy: v.union(notifyChannel, v.null()),
   },
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
-    const client = await ctx.db.get(args.clientId);
+    const { companyId } = await requireOffice(ctx);
+    const client = await getOwned(ctx, companyId, args.clientId);
     if (!client) throw new ConvexError("El cliente ya no existe.");
+    const { phoneCountryCode } = await getCompany(ctx, companyId);
 
     const email = cleanEmail(args.email);
     if (email && !isEmail(email)) throw new ConvexError("El correo no es válido.");
 
-    const whatsapp = cleanPhone(args.whatsapp);
+    const whatsapp = cleanPhone(args.whatsapp, phoneCountryCode);
     if (whatsapp && !isPhone(whatsapp)) {
       throw new ConvexError(
-        "El número de WhatsApp no es válido. Escríbelo con clave de país, por ejemplo +52 987 123 4567.",
+        `El número de WhatsApp no es válido. Escríbelo con clave de país, por ejemplo +${phoneCountryCode} 987 123 4567.`,
       );
     }
 
@@ -163,10 +181,10 @@ export const updateBilling = mutation({
 export const merge = mutation({
   args: { fromId: v.id("clients"), intoId: v.id("clients") },
   handler: async (ctx, { fromId, intoId }) => {
-    await requireAdmin(ctx);
+    const { companyId } = await requireOffice(ctx);
     if (fromId === intoId) throw new ConvexError("Elige un cliente distinto.");
-    const from = await ctx.db.get(fromId);
-    const into = await ctx.db.get(intoId);
+    const from = await getOwned(ctx, companyId, fromId);
+    const into = await getOwned(ctx, companyId, intoId);
     if (!from || !into) throw new ConvexError("El cliente ya no existe.");
 
     await setDeliveriesClient(ctx, fromId, intoId, into.name);
@@ -188,7 +206,11 @@ export const merge = mutation({
     }
     // Routes keep the stop where it was, now for the surviving client (or drop
     // it if that client was already a stop).
-    for (const route of await ctx.db.query("routes").collect()) {
+    const routes = await ctx.db
+      .query("routes")
+      .withIndex("by_company", (q) => q.eq("companyId", companyId))
+      .collect();
+    for (const route of routes) {
       if (!route.stops.some((s) => s.clientId === fromId)) continue;
       const hasInto = route.stops.some((s) => s.clientId === intoId);
       await ctx.db.patch(route._id, {
@@ -207,8 +229,8 @@ export const merge = mutation({
 export const clearLocation = mutation({
   args: { clientId: v.id("clients") },
   handler: async (ctx, { clientId }) => {
-    await requireAdmin(ctx);
-    const client = await ctx.db.get(clientId);
+    const { companyId } = await requireOffice(ctx);
+    const client = await getOwned(ctx, companyId, clientId);
     if (!client) throw new ConvexError("El cliente ya no existe.");
     await ctx.db.patch(clientId, { location: undefined });
   },
@@ -221,34 +243,10 @@ export const setLocation = mutation({
     location: v.object({ lat: v.number(), lng: v.number() }),
   },
   handler: async (ctx, { clientId, location }) => {
-    await requireAdmin(ctx);
-    const client = await ctx.db.get(clientId);
+    const { companyId } = await requireOffice(ctx);
+    const client = await getOwned(ctx, companyId, clientId);
     if (!client) throw new ConvexError("El cliente ya no existe.");
     if (!isValidPoint(location)) throw new ConvexError("La ubicación no es válida.");
     await ctx.db.patch(clientId, { location });
-  },
-});
-
-/**
- * Run once after deploying saved client locations, so existing clients get the
- * location of their latest delivery: `npx convex run clients:backfillLocations`
- * (add `--prod` for production). Safe to run again.
- */
-export const backfillLocations = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    let updated = 0;
-    for (const client of await ctx.db.query("clients").collect()) {
-      if (client.location) continue;
-      const latest = await ctx.db
-        .query("deliveries")
-        .withIndex("by_client", (q) => q.eq("clientId", client._id))
-        .order("desc")
-        .first();
-      if (!latest) continue;
-      await ctx.db.patch(client._id, { location: latest.location });
-      updated++;
-    }
-    return { updated };
   },
 });

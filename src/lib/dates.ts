@@ -4,16 +4,24 @@ export { DAY_MS, daysBetween, formatIsoLong, shiftDays } from "../../convex/lib/
 
 // Every screen shows the company's time, wherever the phone is. See
 // convex/lib/dates.ts for the day math.
-const TIME_ZONE = zoned.LEGACY_TIME_ZONE;
+let timeZone = zoned.LEGACY_TIME_ZONE;
+
+/**
+ * Called by `App` as soon as it knows the user's company, before anything that
+ * shows a date is rendered.
+ */
+export function setTimeZone(zone: string) {
+  timeZone = zone;
+}
 
 const { pad } = zoned;
-const local = (ms: number) => zoned.localParts(ms, TIME_ZONE);
+const local = (ms: number) => zoned.localParts(ms, timeZone);
 
 /** "YYYY-MM-DD" of the given instant (value for <input type="date">). */
-export const isoDate = (ms: number = Date.now()) => zoned.isoDate(ms, TIME_ZONE);
+export const isoDate = (ms: number = Date.now()) => zoned.isoDate(ms, timeZone);
 
 /** Start of the given "YYYY-MM-DD" day, as a timestamp. */
-export const startOfDay = (iso: string) => zoned.startOfDay(iso, TIME_ZONE);
+export const startOfDay = (iso: string) => zoned.startOfDay(iso, timeZone);
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
@@ -39,7 +47,7 @@ export function formatDay(ms: number): string {
 /** "Jueves, 23 de octubre de 2026" */
 export function formatLongDate(ms: number): string {
   const text = new Intl.DateTimeFormat("es-MX", {
-    timeZone: TIME_ZONE,
+    timeZone,
     weekday: "long",
     day: "numeric",
     month: "long",
