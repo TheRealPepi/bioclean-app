@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAdmin, requireUser } from "./lib/access";
+import { legacyCompanyId } from "./lib/tenancy";
 import { cleanName, normalizeKey } from "./lib/text";
 
 /** Every vehicle, archived included (drivers only show the active ones). */
@@ -32,7 +33,12 @@ export const create = mutation({
       await ctx.db.patch(existing._id, { active: true });
       return existing._id;
     }
-    return await ctx.db.insert("vehicles", { name: clean, normalizedName: key, active: true });
+    return await ctx.db.insert("vehicles", {
+      companyId: await legacyCompanyId(ctx),
+      name: clean,
+      normalizedName: key,
+      active: true,
+    });
   },
 });
 

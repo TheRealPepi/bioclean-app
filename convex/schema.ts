@@ -68,8 +68,87 @@ export const routeStop = v.object({
   customLocation: v.optional(v.boolean()),
 });
 
+/** What a member can do in their company (see `convex/lib/access.ts`). */
+export const memberRole = v.union(
+  v.literal("owner"),
+  v.literal("admin"),
+  v.literal("office"),
+  v.literal("driver"),
+);
+
+/** Where a company delivers: address search stays inside `bounds`, maps open on `center`. */
+export const serviceArea = v.object({
+  center: v.object({ lat: v.number(), lng: v.number() }),
+  bounds: v.object({
+    west: v.number(),
+    south: v.number(),
+    east: v.number(),
+    north: v.number(),
+  }),
+});
+
+/** How a company sends its payment reminders. */
+export const companyReminders = v.object({
+  // First delivery day ("YYYY-MM-DD") that gets reminders. Not set = reminders off.
+  startDate: v.optional(v.string()),
+  // The sender is `fromName <fromLocalPart@senderDomain>`.
+  fromName: v.optional(v.string()),
+  fromLocalPart: v.optional(v.string()),
+  replyTo: v.optional(v.string()),
+  // The token is in `companySecrets`.
+  whatsapp: v.optional(
+    v.object({
+      phoneNumberId: v.string(),
+      templateVencimiento: v.optional(v.string()),
+      templateProximo: v.optional(v.string()),
+      lang: v.optional(v.string()),
+    }),
+  ),
+});
+
+// The company a row belongs to. Rows from before companies existed don't have
+// it until `migrations.stampRows` runs.
+const companyId = v.optional(v.id("companies"));
+
 export default defineSchema({
   ...authTables,
+
+  companies: defineTable({
+    name: v.string(),
+    // IANA zone ("America/Cancun"): days and deadlines are in the company's time.
+    timeZone: v.string(),
+    // Added to WhatsApp numbers written without one ("52").
+    phoneCountryCode: v.string(),
+    // Line under the company name in reminder emails.
+    tagline: v.optional(v.string()),
+    // Where routes start (the warehouse).
+    base: v.optional(locationObj),
+    serviceArea: v.optional(serviceArea),
+    // Email domain verified for this company in Resend. Never set from the
+    // app: a company must not be able to send as another one's domain.
+    senderDomain: v.optional(v.string()),
+    reminders: v.optional(companyReminders),
+    // Local day ("YYYY-MM-DD") of the last reminders run.
+    remindersLastRunOn: v.optional(v.string()),
+  }),
+
+  // Apart from `companies` so no query returns them by accident.
+  companySecrets: defineTable({
+    companyId: v.id("companies"),
+    whatsappToken: v.optional(v.string()),
+  }).index("by_company", ["companyId"]),
+
+  // Who can use the app: an email (of a Google account) with a role in one
+  // company. An email is in at most one company.
+  members: defineTable({
+    companyId: v.id("companies"),
+    // Trimmed and lowercased.
+    email: v.string(),
+    role: memberRole,
+    addedBy: v.optional(v.id("users")),
+  })
+    .index("by_email", ["email"])
+    .index("by_company", ["companyId"]),
 
   // A single row with what the office configures for the whole app.
   settings: defineTable({
@@ -81,6 +160,7 @@ export default defineSchema({
   // not stored: it's worked out from the deliveries made after the route was
   // created (see `convex/routes.ts`).
   routes: defineTable({
+    companyId,
     driverId: v.id("users"),
     driverName: v.string(),
     // In visit order.
@@ -92,9 +172,12 @@ export default defineSchema({
     expiresAt: v.number(),
   })
     .index("by_driver", ["driverId", "expiresAt"])
-    .index("by_expires", ["expiresAt"]),
+    .index("by_expires", ["expiresAt"])
+    .index("by_company", ["companyId"])
+    .index("by_company_driver", ["companyId", "driverId", "expiresAt"]),
 
   clients: defineTable({
+    companyId,
     // Display name, uppercased and whitespace-collapsed.
     name: v.string(),
     // Accent/punctuation-insensitive key used to detect duplicates.
@@ -110,23 +193,32 @@ export default defineSchema({
     // Days between the delivery and the payment deadline of a "credito" delivery.
     creditDays: v.optional(v.number()),
     notifyBy: v.optional(notifyChannel),
-  }).index("by_normalized", ["normalizedName"]),
+  })
+    .index("by_normalized", ["normalizedName"])
+    .index("by_company_normalized", ["companyId", "normalizedName"]),
 
   vehicles: defineTable({
+    companyId,
     name: v.string(),
     normalizedName: v.string(),
     // Removed vehicles are archived so past deliveries keep them.
     active: v.boolean(),
-  }).index("by_normalized", ["normalizedName"]),
+  })
+    .index("by_normalized", ["normalizedName"])
+    .index("by_company_normalized", ["companyId", "normalizedName"]),
 
   // One row per factura number, so the duplicate warning can find any number
   // of a delivery with several facturas (arrays can't be indexed).
   invoiceNumbers: defineTable({
+    companyId,
     number: v.string(),
     deliveryId: v.id("deliveries"),
-  }).index("by_number", ["number"]),
+  })
+    .index("by_number", ["number"])
+    .index("by_company_number", ["companyId", "number"]),
 
   deliveries: defineTable({
+    companyId,
     clientId: v.id("clients"),
     clientName: v.string(),
     // Every factura number joined with ", " (used for display and search).
@@ -193,10 +285,14 @@ export default defineSchema({
     .index("by_client", ["clientId", "deliveredAt"])
     .index("by_invoice", ["invoiceNumber"])
     .index("by_vehicle", ["vehicleId"])
-    .index("by_client_request", ["clientRequestId"]),
+    .index("by_client_request", ["clientRequestId"])
+    .index("by_company_driver", ["companyId", "driverId", "deliveredAt"])
+    .index("by_company_delivered", ["companyId", "deliveredAt"])
+    .index("by_company_invoice", ["companyId", "invoiceNumber"]),
 
   // Log of every payment reminder sent (or that failed), shown to the admin.
   reminders: defineTable({
+    companyId,
     clientId: v.id("clients"),
     kind: reminderKind,
     channel: reminderChannel,
@@ -208,5 +304,7 @@ export default defineSchema({
     invoiceNumbers: v.array(v.string()),
     status: v.union(v.literal("enviado"), v.literal("error")),
     error: v.optional(v.string()),
-  }).index("by_client", ["clientId"]),
+  })
+    .index("by_client", ["clientId"])
+    .index("by_company", ["companyId"]),
 });

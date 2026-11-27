@@ -1,23 +1,46 @@
 import { query } from "./_generated/server";
 import {
+  capabilitiesFor,
   displayName,
   emailList,
   getViewer,
   requireAdmin,
   roleForEmail,
 } from "./lib/access";
+import { cleanEmail } from "./lib/text";
 
 export const me = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await getViewer(ctx);
     if (viewer === null) return null;
+
+    // Not used to grant access yet (`role` still comes from the env vars):
+    // returned so phones already have it stored when it is.
+    const email = viewer.user.email;
+    const member = email
+      ? await ctx.db
+          .query("members")
+          .withIndex("by_email", (q) => q.eq("email", cleanEmail(email)))
+          .first()
+      : null;
+    const company = member ? await ctx.db.get(member.companyId) : null;
+
     return {
       _id: viewer.user._id,
       name: displayName(viewer.user),
       email: viewer.user.email ?? null,
       image: viewer.user.image ?? null,
       role: viewer.role,
+      memberRole: member?.role ?? null,
+      can: capabilitiesFor(member?.role),
+      company: company && {
+        _id: company._id,
+        name: company.name,
+        timeZone: company.timeZone,
+        phoneCountryCode: company.phoneCountryCode,
+        serviceArea: company.serviceArea ?? null,
+      },
     };
   },
 });

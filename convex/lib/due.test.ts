@@ -1,12 +1,12 @@
 import { expect, test } from "vitest";
-import { DAY_MS, shiftDays, startOfDay } from "./dates";
+import { DAY_MS, LEGACY_TIME_ZONE as TZ, shiftDays, startOfDay } from "./dates";
 import { deliveredRange, dueDateFor, reminderDue } from "./due";
 
 test("the deadline counts from the delivery day in Cozumel, not in UTC", () => {
   // 11:30 p.m. on March 10 in Cozumel is already March 11 in UTC.
   const lateAtNight = Date.parse("2026-03-11T04:30:00Z");
-  expect(dueDateFor(lateAtNight, 30)).toBe("2026-04-09");
-  expect(dueDateFor(lateAtNight, 1)).toBe("2026-03-11");
+  expect(dueDateFor(lateAtNight, 30, TZ)).toBe("2026-04-09");
+  expect(dueDateFor(lateAtNight, 1, TZ)).toBe("2026-03-11");
 });
 
 test("reminders go out during the week before the deadline and on the day", () => {
@@ -34,10 +34,10 @@ test("every delivery that needs a reminder today is inside the range that gets s
   const today = "2026-06-15";
   let due = 0;
   for (const creditDays of [1, 7, 8, 30, 90]) {
-    const { from, until } = deliveredRange(today, creditDays, "2020-01-01");
+    const { from, until } = deliveredRange(today, creditDays, "2020-01-01", TZ);
     for (let offset = -120; offset <= 10; offset++) {
-      const deliveredAt = startOfDay(shiftDays(today, offset)) + DAY_MS / 2;
-      if (reminderDue(today, dueDateFor(deliveredAt, creditDays), creditDays) === null) continue;
+      const deliveredAt = startOfDay(shiftDays(today, offset), TZ) + DAY_MS / 2;
+      if (reminderDue(today, dueDateFor(deliveredAt, creditDays, TZ), creditDays) === null) continue;
       due++;
       expect(deliveredAt, `${creditDays} days of credit, delivered ${offset} days from today`)
         .toBeGreaterThanOrEqual(from);
@@ -48,6 +48,6 @@ test("every delivery that needs a reminder today is inside the range that gets s
 });
 
 test("deliveries from before reminders were turned on are never searched", () => {
-  const { from } = deliveredRange("2026-06-15", 30, "2026-06-01");
-  expect(from).toBe(startOfDay("2026-06-01"));
+  const { from } = deliveredRange("2026-06-15", 30, "2026-06-01", TZ);
+  expect(from).toBe(startOfDay("2026-06-01", TZ));
 });

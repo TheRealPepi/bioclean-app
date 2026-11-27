@@ -2,7 +2,7 @@
 import { expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
-import { DAY_MS, startOfDay } from "./lib/dates";
+import { DAY_MS, LEGACY_TIME_ZONE, startOfDay } from "./lib/dates";
 import { HERE, setup } from "./test.setup";
 
 // With 30 days of credit, a delivery made on May 31 is due on June 30.
@@ -53,7 +53,7 @@ async function setupReminders() {
           driverId,
           driverName: "Chofer Uno",
           payment,
-          deliveredAt: startOfDay(day) + DAY_MS / 2,
+          deliveredAt: startOfDay(day, LEGACY_TIME_ZONE) + DAY_MS / 2,
         }),
     );
   };

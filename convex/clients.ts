@@ -3,6 +3,7 @@ import type { Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { requireAdmin, requireUser } from "./lib/access";
 import { isValidPoint } from "./lib/geo";
+import { legacyCompanyId } from "./lib/tenancy";
 import { cleanEmail, cleanName, cleanPhone, isEmail, isPhone, normalizeKey } from "./lib/text";
 import { notifyChannel } from "./schema";
 
@@ -59,6 +60,7 @@ export async function findOrCreateClient(ctx: MutationCtx, name: string) {
     .first();
   if (existing) return existing;
   const id = await ctx.db.insert("clients", {
+    companyId: await legacyCompanyId(ctx),
     name: clean,
     normalizedName: key,
     deliveryCount: 0,

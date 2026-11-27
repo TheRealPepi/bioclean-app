@@ -214,6 +214,33 @@ Repite las variables con `--prod` para producción. Prueba cada cliente con **En
 
 **Íconos:** se generan desde `public/app-icon.svg` con `npx pwa-assets-generator`.
 
+## Varias empresas (preparación)
+
+La app se está preparando para que la usen varias empresas, cada una con sus propios usuarios. Se publica en dos pasos para que nadie pierda el acceso en el cambio. **Este es el primero y no cambia nada de lo que ven los usuarios:** el acceso sigue saliendo de `ADMIN_EMAILS` y `ALLOWED_EMAILS`. Solo crea la primera empresa en la base de datos y le asigna todo lo que ya existe.
+
+Después de publicar esta versión, corre en este orden (agrega `--prod` para producción; todo se puede repetir sin problema):
+
+```sh
+# 0. Respaldo, antes de tocar nada.
+npx convex export --prod --path respaldo.zip
+
+# 1. Ver qué haría, sin guardar nada. El dueño tiene que estar en ADMIN_EMAILS.
+npx convex run migrations:backfillCompany '{"ownerEmail": "tu-correo@gmail.com", "dryRun": true}'
+
+# 2. Crear la empresa con sus miembros (los correos de las dos listas).
+npx convex run migrations:backfillCompany '{"ownerEmail": "tu-correo@gmail.com"}'
+
+# 3. Asignarle las entregas, clientes, vehículos, rutas y recordatorios anteriores.
+npx convex run migrations:stampRows
+
+# 4. Revisar. Cuando responde "ready": true, está listo para el segundo paso.
+npx convex run migrations:status
+```
+
+- `stampRows` avanza por lotes y sigue solo hasta terminar; `status` dice cuántas filas faltan en cada tabla.
+- Mientras el acceso venga de las variables, **cada vez que cambies `ADMIN_EMAILS` o `ALLOWED_EMAILS` vuelve a correr el paso 2**: deja a los miembros exactamente igual que las listas (y copia de nuevo la configuración de recordatorios). `status` avisa si no coinciden.
+- El paso 2 también copia a la empresa la base de las rutas y la configuración de recordatorios (`REMINDER_*`, `WHATSAPP_*`). No borres esas variables todavía.
+
 ## Notas
 
 - **Zona horaria:** las fechas se muestran y filtran en hora de Cozumel (UTC-5 todo el año).
@@ -229,6 +256,7 @@ Repite las variables con `--prod` para producción. Prueba cada cliente con **En
 ```
 convex/            Backend: esquema, funciones y reglas de acceso
   lib/access.ts    Roles a partir de ADMIN_EMAILS / ALLOWED_EMAILS
+  migrations.ts    Crea la primera empresa y le asigna los datos anteriores
   reminders.ts     Recordatorios de pago (correo y WhatsApp)
   lib/reminderEmail.ts  Diseño (HTML) del correo de recordatorio
   crons.ts         Tareas diarias: envía los recordatorios y borra rutas vencidas

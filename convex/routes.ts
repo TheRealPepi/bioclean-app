@@ -4,6 +4,7 @@ import { internalMutation, mutation, query, type QueryCtx } from "./_generated/s
 import { displayName, requireAdmin, requireUser, roleForEmail } from "./lib/access";
 import { isValidPoint, type Point } from "./lib/geo";
 import { MAX_ROUTE_STOPS, ROUTE_KEEP_MS, ROUTE_TTL_MS } from "./lib/routes";
+import { legacyCompanyId } from "./lib/tenancy";
 
 /**
  * The route with, for each stop, the first delivery made to that client since
@@ -125,6 +126,7 @@ async function routeFields(
 
   const settings = await ctx.db.query("settings").first();
   return {
+    companyId: await legacyCompanyId(ctx),
     driverId,
     driverName: displayName(driver),
     stops,

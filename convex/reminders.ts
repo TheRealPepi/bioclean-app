@@ -10,9 +10,10 @@ import {
   type ActionCtx,
 } from "./_generated/server";
 import { requireAdmin } from "./lib/access";
-import { formatIsoLong, isIsoDate, isoDate, shiftDays } from "./lib/dates";
+import { formatIsoLong, isIsoDate, isoDate, LEGACY_TIME_ZONE, shiftDays } from "./lib/dates";
 import { deliveredRange, dueDateFor, reminderDue, WEEK } from "./lib/due";
 import { reminderEmailHtml } from "./lib/reminderEmail";
+import { legacyCompanyId } from "./lib/tenancy";
 import { reminderChannel, reminderKind } from "./schema";
 
 // Payment reminders for "credito" deliveries: one a week before the payment
@@ -68,7 +69,7 @@ export const pending = internalQuery({
       if (!creditDays || channels.length === 0) continue;
 
       // Only deliveries whose deadline falls between a few days ago and a week from now.
-      const { from, until } = deliveredRange(today, creditDays, start);
+      const { from, until } = deliveredRange(today, creditDays, start, LEGACY_TIME_ZONE);
       if (from >= until) continue;
 
       const deliveries = await ctx.db
@@ -81,7 +82,7 @@ export const pending = internalQuery({
       for (const delivery of deliveries) {
         if (delivery.payment !== "credito" || delivery.deliveredAt === undefined) continue;
 
-        const dueDate = dueDateFor(delivery.deliveredAt, creditDays);
+        const dueDate = dueDateFor(delivery.deliveredAt, creditDays, LEGACY_TIME_ZONE);
         const kind = reminderDue(today, dueDate, creditDays);
         if (kind === null) continue;
 
@@ -134,6 +135,7 @@ export const record = internalMutation({
     // The client may have been merged into another one while the message was being sent.
     if ((await ctx.db.get(batch.clientId)) === null) return;
     await ctx.db.insert("reminders", {
+      companyId: await legacyCompanyId(ctx),
       ...batch,
       status: error === undefined ? "enviado" : "error",
       error,
@@ -284,7 +286,7 @@ async function deliver(ctx: ActionCtx, batches: Batch[]) {
 export const run = internalAction({
   args: { today: v.optional(v.string()), dryRun: v.optional(v.boolean()) },
   handler: async (ctx, args): Promise<RunResult> => {
-    const today = args.today ?? isoDate();
+    const today = args.today ?? isoDate(Date.now(), LEGACY_TIME_ZONE);
     if (!isIsoDate(today)) throw new Error(`Fecha inválida: ${today}`);
 
     const start = process.env.REMINDERS_START_DATE?.trim();
@@ -311,7 +313,7 @@ export const testBatches = internalQuery({
       kind: "prueba",
       channel,
       to,
-      dueDate: shiftDays(isoDate(), WEEK),
+      dueDate: shiftDays(isoDate(Date.now(), LEGACY_TIME_ZONE), WEEK),
       deliveryIds: [],
       invoiceNumbers: ["PRUEBA-001"],
     }));

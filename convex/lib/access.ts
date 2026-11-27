@@ -5,6 +5,29 @@ import type { QueryCtx } from "../_generated/server";
 
 export type Role = "admin" | "driver";
 
+/** The role stored for each member of a company (`members` table). */
+export type MemberRole = Doc<"members">["role"];
+
+/**
+ * - deliver: register deliveries from the phone.
+ * - office: the day-to-day work (deliveries, routes, clients, vehicles, payments).
+ * - manageUsers: add and remove members.
+ * - manageCompany: change the company's settings.
+ */
+export type Capability = "deliver" | "office" | "manageUsers" | "manageCompany";
+
+const CAPABILITIES: Record<MemberRole, readonly Capability[]> = {
+  owner: ["office", "manageUsers", "manageCompany"],
+  admin: ["office", "manageUsers", "manageCompany"],
+  office: ["office"],
+  driver: ["deliver"],
+};
+
+/** Nothing for someone without a role, or with one this version doesn't know. */
+export function capabilitiesFor(role: MemberRole | null | undefined): readonly Capability[] {
+  return (role && CAPABILITIES[role]) ?? [];
+}
+
 /** Parses a comma/space/semicolon separated env var into a set of lowercase emails. */
 export function emailList(value: string | undefined): Set<string> {
   return new Set(

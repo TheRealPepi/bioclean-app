@@ -5,9 +5,9 @@ export const WEEK = 7;
 /** A deadline reminder that could not be sent is retried for this many days. */
 export const CATCH_UP_DAYS = 3;
 
-/** "YYYY-MM-DD": the delivery day in Cozumel plus the client's credit days. */
-export function dueDateFor(deliveredAt: number, creditDays: number): string {
-  return shiftDays(isoDate(deliveredAt), creditDays);
+/** "YYYY-MM-DD": the delivery day in the company's zone plus the client's credit days. */
+export function dueDateFor(deliveredAt: number, creditDays: number, timeZone: string): string {
+  return shiftDays(isoDate(deliveredAt, timeZone), creditDays);
 }
 
 /**
@@ -30,9 +30,12 @@ export function reminderDue(
  * Deliveries made in [from, until) are the only ones that can need a reminder
  * on `today`; `start` is the first delivery day that gets reminders at all.
  */
-export function deliveredRange(today: string, creditDays: number, start: string) {
+export function deliveredRange(today: string, creditDays: number, start: string, timeZone: string) {
   return {
-    from: Math.max(startOfDay(shiftDays(today, -CATCH_UP_DAYS - creditDays)), startOfDay(start)),
-    until: startOfDay(shiftDays(today, WEEK + 1 - creditDays)),
+    from: Math.max(
+      startOfDay(shiftDays(today, -CATCH_UP_DAYS - creditDays), timeZone),
+      startOfDay(start, timeZone),
+    ),
+    until: startOfDay(shiftDays(today, WEEK + 1 - creditDays), timeZone),
   };
 }

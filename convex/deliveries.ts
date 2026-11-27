@@ -3,8 +3,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type QueryCtx } from "./_generated/server";
 import { findOrCreateClient } from "./clients";
 import { displayName, requireAdmin, requireUser } from "./lib/access";
+import { LEGACY_TIME_ZONE } from "./lib/dates";
 import { dueDateFor } from "./lib/due";
 import { distanceMeters, SAME_PLACE_METERS } from "./lib/geo";
+import { legacyCompanyId } from "./lib/tenancy";
 import { cleanInvoice } from "./lib/text";
 import { deliveryStatus, locationObj, locationSource, paymentType } from "./schema";
 
@@ -169,7 +171,9 @@ export const create = mutation({
     const now = Date.now();
     const when = Math.min(args.deliveredAt ?? now, now);
 
+    const companyId = await legacyCompanyId(ctx);
     const id = await ctx.db.insert("deliveries", {
+      companyId,
       clientId: client._id,
       clientName: client.name,
       invoiceNumber: numbers.join(", "),
@@ -196,7 +200,7 @@ export const create = mutation({
     });
 
     for (const number of numbers) {
-      await ctx.db.insert("invoiceNumbers", { number, deliveryId: id });
+      await ctx.db.insert("invoiceNumbers", { companyId, number, deliveryId: id });
     }
 
     await ctx.db.patch(client._id, {
@@ -366,7 +370,7 @@ export const get = query({
     if (isAdmin && delivery.payment === "credito") {
       const client = await ctx.db.get(delivery.clientId);
       if (client?.creditDays) {
-        dueDate = dueDateFor(deliveredAt(delivery), client.creditDays);
+        dueDate = dueDateFor(deliveredAt(delivery), client.creditDays, LEGACY_TIME_ZONE);
       }
     }
 

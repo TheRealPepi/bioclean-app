@@ -2,6 +2,7 @@ import { ConvexError } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireAdmin } from "./lib/access";
 import { isValidPoint } from "./lib/geo";
+import { legacyCompanyId } from "./lib/tenancy";
 import { locationObj } from "./schema";
 
 export const get = query({
@@ -24,5 +25,8 @@ export const setBase = mutation({
     const settings = await ctx.db.query("settings").first();
     if (settings) await ctx.db.patch(settings._id, { base });
     else await ctx.db.insert("settings", { base });
+    // The company row is where the base will live; keep both the same.
+    const companyId = await legacyCompanyId(ctx);
+    if (companyId) await ctx.db.patch(companyId, { base });
   },
 });

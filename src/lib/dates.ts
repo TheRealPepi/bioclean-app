@@ -1,16 +1,19 @@
-import { localParts as local, pad } from "../../convex/lib/dates";
+import * as zoned from "../../convex/lib/dates";
 
-export {
-  DAY_MS,
-  daysBetween,
-  formatIsoLong,
-  isoDate,
-  shiftDays,
-  startOfDay,
-} from "../../convex/lib/dates";
+export { DAY_MS, daysBetween, formatIsoLong, shiftDays } from "../../convex/lib/dates";
 
-// Cozumel time (UTC-5 all year); see convex/lib/dates.ts for the day math.
-const TIME_ZONE = "America/Cancun";
+// Every screen shows the company's time, wherever the phone is. See
+// convex/lib/dates.ts for the day math.
+const TIME_ZONE = zoned.LEGACY_TIME_ZONE;
+
+const { pad } = zoned;
+const local = (ms: number) => zoned.localParts(ms, TIME_ZONE);
+
+/** "YYYY-MM-DD" of the given instant (value for <input type="date">). */
+export const isoDate = (ms: number = Date.now()) => zoned.isoDate(ms, TIME_ZONE);
+
+/** Start of the given "YYYY-MM-DD" day, as a timestamp. */
+export const startOfDay = (iso: string) => zoned.startOfDay(iso, TIME_ZONE);
 
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
